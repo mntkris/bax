@@ -1,0 +1,7 @@
+DROP SCHEMA IF EXISTS meta CASCADE;
+CREATE SCHEMA IF NOT EXISTS meta;
+
+SET search_path TO meta;
+
+\include_relative meta/core/utils.psql
+\include_relative meta/core/dsl.psql

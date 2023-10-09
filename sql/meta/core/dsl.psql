@@ -1,0 +1,317 @@
+-- 
+-- constraint
+--
+-- props
+
+-- todo description kind
+CREATE TABLE types (
+  serial SERIAL,
+  ns Namespace,
+  name Ident PRIMARY KEY
+);
+
+CREATE TABLE scalartypes (
+  name Ident PRIMARY KEY,
+  pgtype PgType NOT NULL
+) INHERITS (types);
+
+CREATE TABLE enumtypes (
+  values TEXT[]
+) INHERITS (scalartypes);
+
+-- todo range
+
+CREATE TABLE compositetypes (
+  name Ident PRIMARY KEY
+  -- lista fieldów wszelakich
+) INHERITS (types);
+
+CREATE TABLE tables (
+  name Ident PRIMARY KEY
+) INHERITS (compositetypes);
+
+--
+
+CREATE TYPE FieldKind AS ENUM ('scalar', 'composite', 'refn', 'ref1');
+CREATE FUNCTION fieldkind(s TEXT) RETURNS FieldKind AS $BODY$
+  SELECT s::FieldKind;
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
+CREATE TABLE fields (
+  serial SERIAL,
+  kind FieldKind NOT NULL, 
+  owner Ident NOT NULL REFERENCES compositetypes(name),
+  id INT NOT NULL,
+  name Ident NOT NULL,
+  description Description,
+  UNIQUE (owner, id)
+);
+
+CREATE TABLE scalarfields (
+  kind FieldKind NOT NULL DEFAULT 'scalar',
+  type Type NOT NULL REFERENCES scalartypes(name)
+) INHERITS (fields);
+
+CREATE TABLE compositefields (
+  kind FieldKind NOT NULL DEFAULT 'composite',
+  type Type NOT NULL REFERENCES compositetypes(name),
+  inlineprefix TEXT -- gdy false to nie rozwijane
+) INHERITS (fields);
+
+CREATE TABLE refnfields (
+  kind FieldKind NOT NULL DEFAULT 'refn',
+  destination Ident NOT NULL REFERENCES tables(name),
+  cascade BOOL DEFAULT FALSE,
+  names Ident[]
+) INHERITS (fields);
+
+CREATE TABLE ref1fields (
+  kind FieldKind NOT NULL DEFAULT 'ref1'
+) INHERITS (refnfields);
+
+-- ============================================================
+
+CREATE TYPE Scalar_T AS (
+  type Ident
+);
+CREATE DOMAIN Scalar AS Scalar_T
+  CONSTRAINT notempty CHECK (
+    (VALUE).type.notempty);
+CREATE FUNCTION Scalar (
+  type Type
+) RETURNS Scalar AS $BODY$
+  SELECT ROW(type)::Scalar;
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
+CREATE TYPE Composite_T AS (
+  type Type,
+  inlineprefix TEXT
+);
+CREATE DOMAIN Composite AS Composite_T
+  CONSTRAINT notempty CHECK (
+    (VALUE).type.notempty);
+CREATE FUNCTION Composite (
+  type Ident,
+  inlineprefix TEXT DEFAULT NULL
+) RETURNS Composite AS $BODY$
+  SELECT ROW(type, inlineprefix)::Composite;
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
+-- TODO ?reeng zrobic typ 'bazowy' Ref?
+CREATE TYPE RefN_T AS (
+  destination Ident,
+  cascade BOOL,
+  names Ident[]
+);
+CREATE DOMAIN RefN AS RefN_T
+  CONSTRAINT notempty CHECK (
+    (VALUE).destination.notempty AND
+    (VALUE).cascade.notempty);
+CREATE FUNCTION RefN (
+  destination Ident,
+  cascade BOOL DEFAULT FALSE,
+  names Ident[] DEFAULT ARRAY[]::Ident[]
+) RETURNS RefN AS $BODY$
+  SELECT ROW(destination, cascade, names)::RefN;
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
+CREATE TYPE Ref1_T AS (
+  destination Ident,
+  cascade BOOL,
+  names Ident[]
+);
+CREATE DOMAIN Ref1 AS Ref1_T
+  CONSTRAINT notempty CHECK (
+    (VALUE).destination.notempty AND
+    (VALUE).cascade.notempty);
+CREATE FUNCTION Ref1 (
+  destination Ident,
+  cascade BOOL DEFAULT FALSE,
+  names Ident[] DEFAULT ARRAY[]::Ident[]
+) RETURNS Ref1 AS $BODY$
+  SELECT (destination, cascade, names)::Ref1;
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
+
+CREATE TYPE Field_T AS (
+  id INT,
+  name Ident,
+  description Description,
+  scalar Scalar,
+  composite Composite,
+  refn RefN,
+  ref1 Ref1
+);
+CREATE DOMAIN Field AS Field_T
+  CONSTRAINT exactlyone CHECK (
+    truecount(ARRAY[
+      (VALUE).scalar IS NOT NULL,
+      (VALUE).composite IS NOT NULL,
+      (VALUE).refn IS NOT NULL,
+      (VALUE).ref1 IS NOT NULL
+    ]) = 1)
+  CONSTRAINT notempty CHECK (
+    (VALUE).id.notempty AND
+    (VALUE).name.notempty);
+CREATE FUNCTION Field (
+  id INT,
+  name Ident,
+  description Description DEFAULT NULL,
+  scalar Scalar DEFAULT NULL,
+  composite Composite DEFAULT NULL,
+  refn RefN DEFAULT NULL,
+  ref1 Ref1 DEFAULT NULL
+) RETURNS Field AS $BODY$
+  SELECT (
+    id, name, description, scalar, composite, refn, ref1
+  )::Field;
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
+-- ===================================================
+
+CREATE TYPE ScalarType_T AS (
+  ns Namespace,
+  name Ident,
+  pgtype PgType
+);
+CREATE DOMAIN ScalarType AS ScalarType_T
+  CONSTRAINT notempty CHECK (
+    (VALUE).ns.notempty AND 
+    (VALUE).name.notempty AND 
+    (VALUE).pgtype.notempty);
+CREATE FUNCTION ScalarType (
+  ns TEXT,
+  name Ident,
+  pgtype PgType
+) RETURNS ScalarType AS $BODY$
+  SELECT ROW(ns.arr, name, pgtype)::ScalarType
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
+CREATE PROCEDURE def_scalartypes(VARIADIC sts ScalarType[]) AS $BODY$
+#variable_conflict use_variable
+BEGIN
+  INSERT INTO scalartypes(ns, name, pgtype)
+  SELECT st.ns, st.name, st.pgtype FROM UNNEST(sts) st;
+END
+$BODY$ LANGUAGE PLPGSQL;
+
+-- -------------------------------------------------------
+
+CREATE TYPE CompositeType_T AS (
+  ns Namespace,
+  name Ident,
+  fields Field[]
+);
+CREATE DOMAIN CompositeType AS CompositeType_T;
+CREATE FUNCTION CompositeType (
+  ns TEXT,
+  name Ident,
+  VARIADIC fields Field[]
+) RETURNS CompositeType AS $BODY$
+  SELECT (ns.arr, name, fields)::CompositeType;
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
+
+CREATE PROCEDURE def_compositetypes(VARIADIC cts CompositeType[]) AS $BODY$
+#variable_conflict use_variable
+BEGIN
+  INSERT INTO compositetypes(ns, name)
+  SELECT ct.ns, ct.name FROM UNNEST(cts) ct;
+
+  INSERT INTO scalarfields(owner, id, name, description, type)
+  SELECT ct.name, f.id, f.name, f.description, (f.scalar).type
+  FROM UNNEST(cts) ct, UNNEST(ct.fields) f WHERE f.scalar IS NOT NULL;
+
+  INSERT INTO compositefields(owner, id, name, description, type, inlineprefix)
+  SELECT ct.name, f.id, f.name, f.description, (f.composite).type, (f.composite).inlineprefix 
+  FROM UNNEST(cts) ct, UNNEST(ct.fields) f WHERE f.composite IS NOT NULL;
+
+  RETURN;
+END
+$BODY$ LANGUAGE PLPGSQL;
+
+
+-- =================================================================
+-- =================================================================
+
+CALL def_scalartypes(
+  ScalarType('lb', 'City', 'VARCHAR(40)'),
+  ScalarType('lb', 'ZipCode', 'VARCHAR(10)'),
+  ScalarType('lb', 'Street', 'VARCHAR(200)'),
+  ScalarType('lb', 'Building', 'VARCHAR(20)'),
+  ScalarType('lb', 'Apartment', 'VARCHAR(20)'),
+  -- -----------------------------------------------
+  ScalarType('lb', 'CountryCode', 'CHAR(2)'),
+  ScalarType('cs', 'VatIDNumber', 'VARCHAR(10)'),
+  -- -----------------------------------------------
+  ScalarType('cs', 'PersonFullName', 'VARCHAR(200)'),
+  ScalarType('cs', 'Phone', 'VARCHAR(20)'),
+  ScalarType('cs', 'Email', 'VARCHAR(200)'),
+  ScalarType('cs', 'Gate', 'VARCHAR(200)')
+);
+
+CALL def_compositetypes(
+  CompositeType('lb', 'Address',
+    Field(105, 'city',      description => 'City',      scalar => Scalar(type => 'City')     ),
+    Field(110, 'zipcode',   description => 'Zip code',  scalar => Scalar(type => 'ZipCode')  ),
+    Field(115, 'street',    description => 'Street',    scalar => Scalar(type => 'Street')   ),
+    Field(120, 'building',  description => 'Building',  scalar => Scalar(type => 'Building') ),
+    Field(125, 'apartment', description => 'Apartment', scalar => Scalar(type => 'Apartment'))
+  ),
+  CompositeType('cs', 'VatID',
+    Field(105, 'countrycode', description => 'Country',      scalar => Scalar(type => 'CountryCode')),
+    Field(110, 'number',      description => 'VatID number', scalar => Scalar(type => 'VatIDNumber'))
+  ),
+  CompositeType('cs', 'ContactPerson', 
+    Field(105, 'person', description => 'Person full name', scalar => Scalar(type => 'PersonFullName')),
+    Field(110, 'phone1', description => 'Phone 1',          scalar => Scalar(type => 'Phone')         ),
+    Field(115, 'phone1', description => 'Phone 2',          scalar => Scalar(type => 'Phone')         ),
+    Field(120, 'email',  description => 'Email',            scalar => Scalar(type => 'Email')         )
+  ),
+  CompositeType('cs', 'DeliveryLocation',
+    Field(105, 'contact', description => 'Contact', composite => Composite(type => 'ContactPerson', inlineprefix => '')),
+    Field(110, 'address', description => 'Address', composite => Composite(type => 'Address' ,      inlineprefix => '')),
+    Field(115, 'gate',    description => 'Gate(s)', scalar    => Scalar(   type => 'Gate')                             )
+  )
+);
+
+--select vt.*, (ScalarType(vt.ns, vt.name, vt.pgtype)).ddlcreate from scalartypes vt;
+--select * from types;
+
+select * from compositetypes;
+select * from scalarfields;
+select * from compositefields;
+
+/*
+config jest w kodzie (upserty)
+create (enumy puste)
+fill config
+replace enums
+transfer data
+primary keys
+props
+check constraints
+refy
+unique
+indexes
+*/
+
+
+
+
+
+
+
+
+/*
+create domain net int;
+create domain gross int;
+create function calc(x net) returns int as $$
+  select x+1;
+$$ language sql immutable;
+create function calc(x gross) returns int as $$
+  select x-1;
+$$ language sql immutable;
+select (2::net).calc, (2::gross).calc;
+*/
+
