@@ -1,0 +1,27 @@
+
+CALL def_scalartypes(
+  ScalarType('cs', 'VatIDNumber', 'VARCHAR(10)'),
+  -- -----------------------------------------------
+  ScalarType('cs', 'PersonFullName', 'VARCHAR(200)'),
+  ScalarType('cs', 'Phone', 'VARCHAR(20)'),
+  ScalarType('cs', 'Email', 'VARCHAR(200)'),
+  ScalarType('cs', 'Gate', 'VARCHAR(200)')
+);
+
+CALL def_compositetypes(
+  CompositeType('cs', 'VatID',
+    Field(105, 'countrycode', description => 'Country',      scalar => Scalar(type => 'CountryCode')),
+    Field(110, 'number',      description => 'VatID number', scalar => Scalar(type => 'VatIDNumber'))
+  ),
+  CompositeType('cs', 'ContactPerson', 
+    Field(105, 'person', description => 'Person full name', scalar => Scalar(type => 'PersonFullName')),
+    Field(110, 'phone1', description => 'Phone 1',          scalar => Scalar(type => 'Phone')         ),
+    Field(115, 'phone1', description => 'Phone 2',          scalar => Scalar(type => 'Phone')         ),
+    Field(120, 'email',  description => 'Email',            scalar => Scalar(type => 'Email')         )
+  ),
+  CompositeType('cs', 'DeliveryLocation',
+    Field(105, 'contact', description => 'Contact', composite => Composite(type => 'ContactPerson', inlineprefix => '')),
+    Field(110, 'address', description => 'Address', composite => Composite(type => 'Address' ,      inlineprefix => '')),
+    Field(115, 'gate',    description => 'Gate(s)', scalar    => Scalar(   type => 'Gate')                             )
+  )
+);

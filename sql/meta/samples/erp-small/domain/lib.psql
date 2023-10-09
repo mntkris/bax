@@ -1,0 +1,20 @@
+
+CALL def_scalartypes(
+  ScalarType('lb', 'City', 'VARCHAR(40)'),
+  ScalarType('lb', 'ZipCode', 'VARCHAR(10)'),
+  ScalarType('lb', 'Street', 'VARCHAR(200)'),
+  ScalarType('lb', 'Building', 'VARCHAR(20)'),
+  ScalarType('lb', 'Apartment', 'VARCHAR(20)'),
+  -- -----------------------------------------------
+  ScalarType('lb', 'CountryCode', 'CHAR(2)')
+);
+
+CALL def_compositetypes(
+  CompositeType('lb', 'Address',
+    Field(105, 'city',      description => 'City',      scalar => Scalar(type => 'City')     ),
+    Field(110, 'zipcode',   description => 'Zip code',  scalar => Scalar(type => 'ZipCode')  ),
+    Field(115, 'street',    description => 'Street',    scalar => Scalar(type => 'Street')   ),
+    Field(120, 'building',  description => 'Building',  scalar => Scalar(type => 'Building') ),
+    Field(125, 'apartment', description => 'Apartment', scalar => Scalar(type => 'Apartment'))
+  )
+);

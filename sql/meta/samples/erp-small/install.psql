@@ -1,0 +1,38 @@
+-- TODO remove drops when evo is ready
+DROP SCHEMA IF EXISTS meta CASCADE;
+DROP SCHEMA IF EXISTS lb   CASCADE;
+DROP SCHEMA IF EXISTS cs   CASCADE;
+-- --------------------------------
+
+CREATE SCHEMA IF NOT EXISTS meta;
+SET search_path TO meta;
+
+\include_relative ../../core/utils.psql
+\include_relative ../../core/dsl.psql
+
+CREATE SCHEMA lb;
+CREATE SCHEMA cs;
+
+\include_relative domain/lib.psql
+\include_relative domain/customer.psql
+
+
+-- ----------------------------------
+-- ----------------------------------
+-- ----------------------------------
+select * from compositetypes;
+select * from scalarfields;
+select * from compositefields;
+/*
+--  config data in code (inserts)
+create (enumy puste)
+fill config
+replace enums
+transfer data
+primary keys
+props
+check constraints
+refy
+unique
+indexes
+*/
