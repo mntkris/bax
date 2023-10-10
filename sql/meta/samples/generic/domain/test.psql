@@ -1,0 +1,32 @@
+CALL def_scalartypes(
+  ScalarType('gen', 'Text10', 'VARCHAR(10)'),
+  ScalarType('gen', 'Text20', 'VARCHAR(20)'),
+  ScalarType('gen', 'Text50', 'VARCHAR(50)'),
+  ScalarType('gen', 'Unique', 'UUID'),
+  ScalarType('gen', 'Amount', 'DECIMAL(10,2)'),
+  ScalarType('gen', 'AnyNum', 'BIGINT')
+);
+
+CALL def_compositetypes(
+  CompositeType('gen', 'Compo2',
+    ScalarField(105, 'unique', 'Unique'),
+    Field(110, 'text10', scalar => Scalar(type => 'Text10'))
+  ),
+  CompositeType('gen', 'Compo3',
+    Field(105, 'text20', scalar => Scalar(type => 'Text20')),
+    Field(110, 'amount', scalar => Scalar(type => 'Amount')),
+    Field(115, 'anynum', scalar => Scalar(type => 'AnyNum'))
+  ),
+  CompositeType('gen', 'Compo23',
+    Field(105, 'compo2', composite => Composite(type => 'Compo2', inlineprefix => '')),
+    Field(110, 'compo3', composite => Composite(type => 'Compo3', inlineprefix => 'co3_')),
+    Field(115, 'text50', scalar => Scalar(type => 'Text50'))  
+  ),
+  CompositeType('gen', 'Compo32',
+    Field(115, 'text50', scalar => Scalar(type => 'Text50')),
+    Field(110, 'compo3', composite => Composite(type => 'Compo3')),
+    Field(105, 'compo2', composite => Composite(type => 'Compo2'))
+  )
+);
+
+

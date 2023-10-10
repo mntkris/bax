@@ -3,7 +3,6 @@
 --
 -- props
 
--- todo description kind
 CREATE TABLE types (
   serial SERIAL,
   ns Namespace,
@@ -23,7 +22,6 @@ CREATE TABLE enumtypes (
 
 CREATE TABLE compositetypes (
   name Ident PRIMARY KEY
-  -- lista fieldów wszelakich
 ) INHERITS (types);
 
 CREATE TABLE tables (
@@ -43,30 +41,33 @@ CREATE TABLE fields (
   owner Ident NOT NULL REFERENCES compositetypes(name),
   id INT NOT NULL,
   name Ident NOT NULL,
-  description Description,
-  UNIQUE (owner, id)
+  description Description
 );
 
 CREATE TABLE scalarfields (
   kind FieldKind NOT NULL DEFAULT 'scalar',
-  type Type NOT NULL REFERENCES scalartypes(name)
+  type Type NOT NULL REFERENCES scalartypes(name),
+  UNIQUE (owner, id)
 ) INHERITS (fields);
 
 CREATE TABLE compositefields (
   kind FieldKind NOT NULL DEFAULT 'composite',
   type Type NOT NULL REFERENCES compositetypes(name),
-  inlineprefix TEXT -- gdy false to nie rozwijane
+  inlineprefix TEXT, -- gdy false to nie rozwijane
+  UNIQUE (owner, id)
 ) INHERITS (fields);
 
 CREATE TABLE refnfields (
   kind FieldKind NOT NULL DEFAULT 'refn',
   destination Ident NOT NULL REFERENCES tables(name),
   cascade BOOL DEFAULT FALSE,
-  names Ident[]
+  names Ident[],
+  UNIQUE (owner, id)
 ) INHERITS (fields);
 
 CREATE TABLE ref1fields (
-  kind FieldKind NOT NULL DEFAULT 'ref1'
+  kind FieldKind NOT NULL DEFAULT 'ref1',
+  UNIQUE (owner, id)
 ) INHERITS (refnfields);
 
 -- ============================================================
@@ -145,10 +146,10 @@ CREATE TYPE Field_T AS (
 CREATE DOMAIN Field AS Field_T
   CONSTRAINT exactlyone CHECK (
     truecount(ARRAY[
-      (VALUE).scalar IS NOT NULL,
-      (VALUE).composite IS NOT NULL,
-      (VALUE).refn IS NOT NULL,
-      (VALUE).ref1 IS NOT NULL
+      (VALUE).scalar.notnull,
+      (VALUE).composite.notnull,
+      (VALUE).refn.notnull,
+      (VALUE).ref1.notnull
     ]) = 1)
   CONSTRAINT notempty CHECK (
     (VALUE).id.notempty AND
@@ -166,6 +167,17 @@ CREATE FUNCTION Field (
     id, name, description, scalar, composite, refn, ref1
   )::Field;
 $BODY$ LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION ScalarField(
+  id INT,
+  name Ident,
+  type Type,
+  description Description DEFAULT NULL
+) RETURNS Field AS $BODY$
+  SELECT Field(id, name, description, scalar => Scalar(type => type));
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION CompositeField
 
 -- ===================================================
 
@@ -202,7 +214,11 @@ CREATE TYPE CompositeType_T AS (
   name Ident,
   fields Field[]
 );
-CREATE DOMAIN CompositeType AS CompositeType_T;
+CREATE DOMAIN CompositeType AS CompositeType_T
+  CONSTRAINT notempty CHECK (
+    (VALUE).ns.notempty AND
+    (VALUE).name.notempty AND
+    (VALUE).fields.notempty);
 CREATE FUNCTION CompositeType (
   ns TEXT,
   name Ident,
@@ -230,7 +246,45 @@ BEGIN
 END
 $BODY$ LANGUAGE PLPGSQL;
 
+-- =================================================================
 
--- =================================================================
--- =================================================================
+CREATE TYPE GenericTable_T AS (
+  ns Namespace,
+  name Ident,
+  pk Ident[],
+  fields Field[]
+);
+CREATE DOMAIN GenericTable AS GenericTable_T
+  CONSTRAINT notempty CHECK (
+    (VALUE).ns.notempty AND
+    (VALUE).name.notempty AND
+    (VALUE).pk.notempty AND
+    (VALUE).fields.notempty);
+CREATE FUNCTION GenericTable (
+  ns TEXT,
+  name Ident,
+  pk TEXT,
+  VARIADIC fields Field[]
+) RETURNS GenericTable AS $BODY$
+  SELECT (ns.arr, name, pk.arr, fields)::GenericTable;
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
+
+CREATE PROCEDURE def_tables(VARIADIC gts GenericTable[]) AS $BODY$
+#variable_conflict use_variable
+BEGIN
+  INSERT INTO tables(ns, name, pk)
+  SELECT gt.ns, gt.name, gt.pk FROM UNNEST(gts) gt;
+
+  INSERT INTO scalarfields(owner, id, name, description, type)
+  SELECT gt.name, f.id, f.name, f.description, (f.scalar).type
+  FROM UNNEST(gts) gt, UNNEST(gt.fields) f WHERE f.scalar IS NOT NULL;
+
+  INSERT INTO compositefields(owner, id, name, description, type, inlineprefix)
+  SELECT gt.name, f.id, f.name, f.description, (f.composite).type, (f.composite).inlineprefix 
+  FROM UNNEST(gts) gt, UNNEST(gt.fields) f WHERE f.composite IS NOT NULL;
+
+  RETURN;
+END
+$BODY$ LANGUAGE PLPGSQL;
 

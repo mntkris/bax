@@ -1,13 +1,13 @@
 \include_relative ../../core/install.psql
 
-\include_relative domain/lib.psql
-\include_relative domain/customer.psql
+\include_relative domain/test.psql
 
 
 -- ----------------------------------
 -- ----------------------------------
 -- ----------------------------------
 select * from compositetypes;
+select * from fields;
 select * from scalarfields;
 select * from compositefields;
 /*

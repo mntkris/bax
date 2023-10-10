@@ -5,7 +5,10 @@ CALL def_scalartypes(
   ScalarType('cs', 'PersonFullName', 'VARCHAR(200)'),
   ScalarType('cs', 'Phone', 'VARCHAR(20)'),
   ScalarType('cs', 'Email', 'VARCHAR(200)'),
-  ScalarType('cs', 'Gate', 'VARCHAR(200)')
+  ScalarType('cs', 'Gate', 'VARCHAR(200)'),
+  -- -----------------------------------------------
+  ScalarType('cs', 'CustomerSymbol', 'VARCHAR(20)'),
+  ScalarType('cs', 'CustomeName', 'VARCHAR(1000)')
 );
 
 CALL def_compositetypes(
