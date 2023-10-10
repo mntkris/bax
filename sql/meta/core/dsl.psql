@@ -184,7 +184,7 @@ CREATE FUNCTION Composite(
   type Type,
   description Description DEFAULT NULL
 ) RETURNS Field AS $BODY$
-  SELECT Field(id, name, 'description', compositeext => CompositeExt(type => type));
+  SELECT Field(id, name, description, compositeext => CompositeExt(type => type));
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
 CREATE FUNCTION Inline(
