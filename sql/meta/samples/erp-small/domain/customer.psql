@@ -13,18 +13,18 @@ CALL def_scalartypes(
 
 CALL def_compositetypes(
   CompositeType('cs', 'VatID',
-    Field(105, 'countrycode', description => 'Country',      scalar => Scalar(type => 'CountryCode')),
-    Field(110, 'number',      description => 'VatID number', scalar => Scalar(type => 'VatIDNumber'))
+    Scalar(105, 'countrycode', 'CountryCode', description => 'Country'     ),
+    Scalar(110, 'number',      'VatIDNumber', description => 'VatID number')
   ),
   CompositeType('cs', 'ContactPerson', 
-    Field(105, 'person', description => 'Person full name', scalar => Scalar(type => 'PersonFullName')),
-    Field(110, 'phone1', description => 'Phone 1',          scalar => Scalar(type => 'Phone')         ),
-    Field(115, 'phone1', description => 'Phone 2',          scalar => Scalar(type => 'Phone')         ),
-    Field(120, 'email',  description => 'Email',            scalar => Scalar(type => 'Email')         )
+    Scalar(105, 'person', 'PersonFullName', description => 'Person full name'),
+    Scalar(110, 'phone1', 'Phone',          description => 'Phone 1'         ),
+    Scalar(115, 'phone1', 'Phone',          description => 'Phone 2'         ),
+    Scalar(120, 'email',  'Email',          description => 'Email'           )
   ),
   CompositeType('cs', 'DeliveryLocation',
-    Field(105, 'contact', description => 'Contact', composite => Composite(type => 'ContactPerson', inlineprefix => '')),
-    Field(110, 'address', description => 'Address', composite => Composite(type => 'Address' ,      inlineprefix => '')),
-    Field(115, 'gate',    description => 'Gate(s)', scalar    => Scalar(   type => 'Gate')                             )
+    Inline(105, 'ContactPerson', prefix => '', description => 'Contact'),
+    Inline(110, 'Address',       prefix => '', description => 'Address'),
+    Scalar(115, 'gate', 'Gate', description => 'Gate(s)')
   )
 );

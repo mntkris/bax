@@ -11,10 +11,10 @@ CALL def_scalartypes(
 
 CALL def_compositetypes(
   CompositeType('lb', 'Address',
-    Field(105, 'city',      description => 'City',      scalar => Scalar(type => 'City')     ),
-    Field(110, 'zipcode',   description => 'Zip code',  scalar => Scalar(type => 'ZipCode')  ),
-    Field(115, 'street',    description => 'Street',    scalar => Scalar(type => 'Street')   ),
-    Field(120, 'building',  description => 'Building',  scalar => Scalar(type => 'Building') ),
-    Field(125, 'apartment', description => 'Apartment', scalar => Scalar(type => 'Apartment'))
+    Scalar(105, 'city',      'City',      description => 'City'     ),
+    Scalar(110, 'zipcode',   'ZipCode',   description => 'Zip code' ),
+    Scalar(115, 'street',    'Street',    description => 'Street'   ),
+    Scalar(120, 'building',  'Building',  description => 'Building' ),
+    Scalar(125, 'apartment', 'Apartment', description => 'Apartment')
   )
 );
