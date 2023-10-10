@@ -9,23 +9,23 @@ CALL def_scalartypes(
 
 CALL def_compositetypes(
   CompositeType('gen', 'Compo2',
-    ScalarField(105, 'unique', 'Unique'),
-    Field(110, 'text10', scalar => Scalar(type => 'Text10'))
+    Scalar(105, 'unique', 'Unique'),
+    Scalar(110, 'text10', 'Text10')
   ),
   CompositeType('gen', 'Compo3',
-    Field(105, 'text20', scalar => Scalar(type => 'Text20')),
-    Field(110, 'amount', scalar => Scalar(type => 'Amount')),
-    Field(115, 'anynum', scalar => Scalar(type => 'AnyNum'))
+    Scalar(105, 'text20', 'Text20'),
+    Scalar(110, 'amount', 'Amount'),
+    Scalar(115, 'anynum', 'AnyNum')
   ),
   CompositeType('gen', 'Compo23',
-    Field(105, 'compo2', composite => Composite(type => 'Compo2', inlineprefix => '')),
-    Field(110, 'compo3', composite => Composite(type => 'Compo3', inlineprefix => 'co3_')),
-    Field(115, 'text50', scalar => Scalar(type => 'Text50'))  
+    Inline(105, 'Compo2', prefix => ''),
+    Inline(110, 'Compo3', 'co3_'),
+    Scalar(115, 'text50', 'Text50')  
   ),
   CompositeType('gen', 'Compo32',
-    Field(115, 'text50', scalar => Scalar(type => 'Text50')),
-    Field(110, 'compo3', composite => Composite(type => 'Compo3')),
-    Field(105, 'compo2', composite => Composite(type => 'Compo2'))
+    Scalar(115, 'text50', 'Text50'),
+    Composite(110, 'compo3', 'Compo3'),
+    Composite(105, 'compo2', 'Compo2')
   )
 );
 

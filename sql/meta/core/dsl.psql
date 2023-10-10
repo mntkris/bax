@@ -72,65 +72,65 @@ CREATE TABLE ref1fields (
 
 -- ============================================================
 
-CREATE TYPE Scalar_T AS (
+CREATE TYPE ScalarExt_T AS (
   type Ident
 );
-CREATE DOMAIN Scalar AS Scalar_T
+CREATE DOMAIN ScalarExt AS ScalarExt_T
   CONSTRAINT notempty CHECK (
     (VALUE).type.notempty);
-CREATE FUNCTION Scalar (
+CREATE FUNCTION ScalarExt (
   type Type
-) RETURNS Scalar AS $BODY$
-  SELECT ROW(type)::Scalar;
+) RETURNS ScalarExt AS $BODY$
+  SELECT ROW(type)::ScalarExt;
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
-CREATE TYPE Composite_T AS (
+CREATE TYPE CompositeExt_T AS (
   type Type,
   inlineprefix TEXT
 );
-CREATE DOMAIN Composite AS Composite_T
+CREATE DOMAIN CompositeExt AS CompositeExt_T
   CONSTRAINT notempty CHECK (
     (VALUE).type.notempty);
-CREATE FUNCTION Composite (
+CREATE FUNCTION CompositeExt (
   type Ident,
   inlineprefix TEXT DEFAULT NULL
-) RETURNS Composite AS $BODY$
-  SELECT ROW(type, inlineprefix)::Composite;
+) RETURNS CompositeExt AS $BODY$
+  SELECT ROW(type, inlineprefix)::CompositeExt;
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
 -- TODO ?reeng zrobic typ 'bazowy' Ref?
-CREATE TYPE RefN_T AS (
+CREATE TYPE RefNExt_T AS (
   destination Ident,
   cascade BOOL,
   names Ident[]
 );
-CREATE DOMAIN RefN AS RefN_T
+CREATE DOMAIN RefNExt AS RefNExt_T
   CONSTRAINT notempty CHECK (
     (VALUE).destination.notempty AND
     (VALUE).cascade.notempty);
-CREATE FUNCTION RefN (
+CREATE FUNCTION RefNExt (
   destination Ident,
   cascade BOOL DEFAULT FALSE,
   names Ident[] DEFAULT ARRAY[]::Ident[]
-) RETURNS RefN AS $BODY$
-  SELECT ROW(destination, cascade, names)::RefN;
+) RETURNS RefNExt AS $BODY$
+  SELECT ROW(destination, cascade, names)::RefNExt;
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
-CREATE TYPE Ref1_T AS (
+CREATE TYPE Ref1Ext_T AS (
   destination Ident,
   cascade BOOL,
   names Ident[]
 );
-CREATE DOMAIN Ref1 AS Ref1_T
+CREATE DOMAIN Ref1Ext AS Ref1Ext_T
   CONSTRAINT notempty CHECK (
     (VALUE).destination.notempty AND
     (VALUE).cascade.notempty);
-CREATE FUNCTION Ref1 (
+CREATE FUNCTION Ref1Ext (
   destination Ident,
   cascade BOOL DEFAULT FALSE,
   names Ident[] DEFAULT ARRAY[]::Ident[]
-) RETURNS Ref1 AS $BODY$
-  SELECT (destination, cascade, names)::Ref1;
+) RETURNS Ref1Ext AS $BODY$
+  SELECT (destination, cascade, names)::Ref1Ext;
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
 
@@ -138,18 +138,18 @@ CREATE TYPE Field_T AS (
   id INT,
   name Ident,
   description Description,
-  scalar Scalar,
-  composite Composite,
-  refn RefN,
-  ref1 Ref1
+  scalarext ScalarExt,
+  compositeext CompositeExt,
+  refnext RefNExt,
+  ref1ext Ref1Ext
 );
 CREATE DOMAIN Field AS Field_T
   CONSTRAINT exactlyone CHECK (
     truecount(ARRAY[
-      (VALUE).scalar.notnull,
-      (VALUE).composite.notnull,
-      (VALUE).refn.notnull,
-      (VALUE).ref1.notnull
+      (VALUE).scalarext.notnull,
+      (VALUE).compositeext.notnull,
+      (VALUE).refnext.notnull,
+      (VALUE).ref1ext.notnull
     ]) = 1)
   CONSTRAINT notempty CHECK (
     (VALUE).id.notempty AND
@@ -158,26 +158,44 @@ CREATE FUNCTION Field (
   id INT,
   name Ident,
   description Description DEFAULT NULL,
-  scalar Scalar DEFAULT NULL,
-  composite Composite DEFAULT NULL,
-  refn RefN DEFAULT NULL,
-  ref1 Ref1 DEFAULT NULL
+  scalarext ScalarExt DEFAULT NULL,
+  compositeext CompositeExt DEFAULT NULL,
+  refnext RefNExt DEFAULT NULL,
+  ref1ext Ref1Ext DEFAULT NULL
 ) RETURNS Field AS $BODY$
   SELECT (
-    id, name, description, scalar, composite, refn, ref1
+    id, name, description, 
+    scalarext, compositeext, refnext, ref1ext
   )::Field;
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
-CREATE FUNCTION ScalarField(
+CREATE FUNCTION Scalar(
   id INT,
   name Ident,
   type Type,
   description Description DEFAULT NULL
 ) RETURNS Field AS $BODY$
-  SELECT Field(id, name, description, scalar => Scalar(type => type));
+  SELECT Field(id, name, description, scalarext => ScalarExt(type => type));
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
-CREATE FUNCTION CompositeField
+CREATE FUNCTION Composite(
+  id INT,
+  name Ident,
+  type Type,
+  description Description DEFAULT NULL
+) RETURNS Field AS $BODY$
+  SELECT Field(id, name, 'description', compositeext => CompositeExt(type => type));
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION Inline(
+  id INT,
+  type Type,
+  prefix TEXT DEFAULT NULL,
+  description Description DEFAULT NULL
+) RETURNS Field AS $BODY$
+  SELECT Field(id, 'inline_' || id, description, compositeext => CompositeExt(
+    type => type, inlineprefix => prefix));
+$BODY$ LANGUAGE SQL IMMUTABLE;
 
 -- ===================================================
 
@@ -235,12 +253,12 @@ BEGIN
   SELECT ct.ns, ct.name FROM UNNEST(cts) ct;
 
   INSERT INTO scalarfields(owner, id, name, description, type)
-  SELECT ct.name, f.id, f.name, f.description, (f.scalar).type
-  FROM UNNEST(cts) ct, UNNEST(ct.fields) f WHERE f.scalar IS NOT NULL;
+  SELECT ct.name, f.id, f.name, f.description, (f.scalarext).type
+  FROM UNNEST(cts) ct, UNNEST(ct.fields) f WHERE (f.scalarext).notnull;
 
   INSERT INTO compositefields(owner, id, name, description, type, inlineprefix)
-  SELECT ct.name, f.id, f.name, f.description, (f.composite).type, (f.composite).inlineprefix 
-  FROM UNNEST(cts) ct, UNNEST(ct.fields) f WHERE f.composite IS NOT NULL;
+  SELECT ct.name, f.id, f.name, f.description, (f.compositeext).type, (f.compositeext).inlineprefix 
+  FROM UNNEST(cts) ct, UNNEST(ct.fields) f WHERE (f.compositeext).notnull;
 
   RETURN;
 END
