@@ -9,7 +9,7 @@ CALL def_scalartypes(
 
 CALL def_compositetypes(
   CompositeType('gen', 'Compo2',
-    Scalar(105, 'unique', 'Unique'),
+    Scalar(105, 'unique', 'Unique', description => 'guid'),
     Scalar(110, 'text10', 'Text10')
   ),
   CompositeType('gen', 'Compo3',
@@ -19,7 +19,7 @@ CALL def_compositetypes(
   ),
   CompositeType('gen', 'Compo23',
     Inline(105, 'Compo2', prefix => ''),
-    Inline(110, 'Compo3', 'co3_'),
+    Inline(110, 'Compo3', prefix => 'co3_', description => 'inline with prefix'),
     Scalar(115, 'text50', 'Text50')  
   ),
   CompositeType('gen', 'Compo32',
