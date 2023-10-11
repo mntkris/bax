@@ -10,6 +10,8 @@ select * from compositetypes;
 select * from fields;
 select * from scalarfields;
 select * from compositefields;
+select * from refnfields;
+select * from tables;
 /*
 --  config data in code (inserts)
 create (enumy puste)

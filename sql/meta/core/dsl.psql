@@ -25,7 +25,8 @@ CREATE TABLE compositetypes (
 ) INHERITS (types);
 
 CREATE TABLE tables (
-  name Ident PRIMARY KEY
+  name Ident PRIMARY KEY,
+  pk Ident[]
 ) INHERITS (compositetypes);
 
 --
@@ -197,6 +198,28 @@ CREATE FUNCTION Inline(
     type => type, inlineprefix => prefix));
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
+CREATE FUNCTION RefN(
+  id INT,
+  destination Ident,
+  cascade BOOL DEFAULT FALSE,
+  names Text DEFAULT NULL,
+  description Description DEFAULT NULL
+) RETURNS Field AS $BODY$
+  SELECT Field(id, 'refn_' || id, description, refnext => RefNExt(
+    destination => destination, cascade => cascade, names => names.arr));
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION Ref1(
+  id INT,
+  destination Ident,
+  cascade BOOL DEFAULT FALSE,
+  names Text DEFAULT NULL,
+  description Description DEFAULT NULL
+) RETURNS Field AS $BODY$
+  SELECT Field(id, 'ref1_' || id, description, ref1ext => Ref1Ext(
+    destination => destination, cascade => cascade, names => names.arr));
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
 -- ===================================================
 
 CREATE TYPE ScalarType_T AS (
@@ -295,13 +318,25 @@ BEGIN
   SELECT gt.ns, gt.name, gt.pk FROM UNNEST(gts) gt;
 
   INSERT INTO scalarfields(owner, id, name, description, type)
-  SELECT gt.name, f.id, f.name, f.description, (f.scalar).type
-  FROM UNNEST(gts) gt, UNNEST(gt.fields) f WHERE f.scalar IS NOT NULL;
+  SELECT gt.name, f.id, f.name, f.description, (f.scalarext).type
+  FROM UNNEST(gts) gt, UNNEST(gt.fields) f WHERE (f.scalarext).notnull;
 
   INSERT INTO compositefields(owner, id, name, description, type, inlineprefix)
-  SELECT gt.name, f.id, f.name, f.description, (f.composite).type, (f.composite).inlineprefix 
-  FROM UNNEST(gts) gt, UNNEST(gt.fields) f WHERE f.composite IS NOT NULL;
+  SELECT gt.name, f.id, f.name, f.description, (f.compositeext).type, (f.compositeext).inlineprefix 
+  FROM UNNEST(gts) gt, UNNEST(gt.fields) f WHERE (f.compositeext).notnull;
 
+  INSERT INTO refnfields(owner, id, name, description, 
+                         destination, cascade, names)
+  SELECT gt.name, f.id, f.name, f.description,
+    (f.refnext).destination, (f.refnext).cascade, (f.refnext).names
+  FROM UNNEST(gts) gt, UNNEST(gt.fields) f WHERE (f.refnext).notnull;
+
+  INSERT INTO ref1fields(owner, id, name, description, 
+                         destination, cascade, names)
+  SELECT gt.name, f.id, f.name, f.description,
+    (f.ref1ext).destination, (f.ref1ext).cascade, (f.ref1ext).names
+  FROM UNNEST(gts) gt, UNNEST(gt.fields) f WHERE (f.ref1ext).notnull;
+  
   RETURN;
 END
 $BODY$ LANGUAGE PLPGSQL;

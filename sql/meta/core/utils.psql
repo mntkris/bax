@@ -1,3 +1,8 @@
+/*
+role bax_sysadmin owner meta (bypassrls)
+role bax_appadmin business logic owner (nobypassrls)
+*/
+
 CREATE DOMAIN Ident TEXT;
 CREATE DOMAIN Namespace Ident[];
 CREATE DOMAIN Description TEXT;
@@ -6,7 +11,7 @@ CREATE DOMAIN Type TEXT;
 -- CREATE DOMAIN Expr TEXT;
 
 CREATE FUNCTION arr(s TEXT) RETURNS Namespace AS $BODY$
-  SELECT STRING_TO_ARRAY(s, ',');
+  SELECT STRING_TO_ARRAY(REPLACE(REPLACE(s,'-',','), ' ',''), ',');
 $BODY$ LANGUAGE SQL IMMUTABLE STRICT;
 -- select ('11-22-33').arr;
 

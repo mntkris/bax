@@ -4,7 +4,8 @@ CALL def_scalartypes(
   ScalarType('gen', 'Text50', 'VARCHAR(50)'),
   ScalarType('gen', 'Unique', 'UUID'),
   ScalarType('gen', 'Amount', 'DECIMAL(10,2)'),
-  ScalarType('gen', 'AnyNum', 'BIGINT')
+  ScalarType('gen', 'AnyNum', 'BIGINT'),
+  ScalarType('gen', 'Date10', 'DATE')
 );
 
 CALL def_compositetypes(
@@ -29,4 +30,28 @@ CALL def_compositetypes(
   )
 );
 
-
+CALL def_tables(
+  GenericTable('gen', 'Table1', 'unique, date10',
+    Scalar   (105, 'unique', 'Unique'),
+    Scalar   (110, 'date10', 'Date10'),
+    Scalar   (115, 'text50', 'Text50'),
+    Composite(120, 'compo23', 'Compo23'),
+    Inline   (125, 'Compo32', prefix => '')
+  ),
+  GenericTable('gen', 'Table11', 'anynum',
+    Scalar(105, 'anynum', 'AnyNum'),
+    RefN  (110, 'Table1')
+  ),
+  GenericTable('gen', 'Table12', 'anynum',
+    Scalar(105, 'anynum', 'AnyNum'),
+    RefN  (110, 'Table1', names => 'table1_unique, table1_date10')
+  ),
+  GenericTable('gen', 'Table13', 'anynum',
+    Scalar(105, 'anynum', 'AnyNum'),
+    Ref1  (110, 'Table1')
+  ),
+  GenericTable('gen', 'Table14', 'anynum',
+    Scalar(105, 'anynum', 'AnyNum'),
+    Ref1  (110, 'Table1', names => 'table1_unique, table1_date10')
+  )
+);
