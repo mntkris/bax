@@ -1,0 +1,37 @@
+-- WIP
+set search_path to meta;
+
+drop table if exists ddltypefields;
+CREATE TABLE ddltypefields (
+  kind FieldKind,
+  owner Ident,
+  id TEXT,
+  name Ident,
+  type Type
+);
+
+do $$
+DECLARE
+  typerec types%ROWTYPE;
+BEGIN
+  FOR typerec IN
+  	SELECT * FROM types 
+  	WHERE kind IN ('composite', 'table')
+  	ORDER BY serial
+  LOOP
+	INSERT INTO ddltypefields(kind, owner, id, name, type)
+	SELECT kind, owner, id::TEXT, name, type
+	FROM scalarfields WHERE owner = typerec.name
+	UNION ALL
+	SELECT kind, owner, id::TEXT, name, type
+	FROM compositefields WHERE owner = typerec.name AND inlineprefix IS NULL
+	UNION ALL  
+	SELECT DISTINCT tf.kind, tf.owner, cf.id || '-' || tf.id, cf.inlineprefix || tf.name, tf.type  -- TODO distinct
+	FROM compositefields cf
+	JOIN ddltypefields tf ON cf.type = tf.owner
+	WHERE cf.owner = typerec.name AND cf.inlineprefix IS NOT NULL;
+	
+  END LOOP;	
+END $$;
+
+select * from ddltypefields order by 2,3;
