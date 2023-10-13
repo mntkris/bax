@@ -55,3 +55,18 @@ CALL def_tables(
     Ref1  (110, 'Table1', names => 'table1_unique, table1_date10')
   )
 );
+
+CALL def_compositetypes(
+  CompositeType('nest', 'C3',
+    Scalar(105, 's1', 'Text10'),
+    Scalar(110, 's2', 'Text10')
+  ),
+  CompositeType('nest', 'C2',
+    Scalar(105, 's1', 'Text10'),
+    Inline(110, 'C3', prefix => 'c3-')
+  ),
+  CompositeType('nest', 'C1',
+    Scalar(105, 's1', 'Text10'),
+    Inline(110, 'C2', prefix => 'c2-')
+  )
+)

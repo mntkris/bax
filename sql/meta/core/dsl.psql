@@ -3,28 +3,35 @@
 --
 -- props
 
+CREATE TYPE TypeKind AS ENUM ('scalar', 'enum', 'composite', 'table');
+
 CREATE TABLE types (
   serial SERIAL,
+  kind TypeKind NOT NULL,
   ns Namespace,
   name Ident PRIMARY KEY
 );
 
 CREATE TABLE scalartypes (
+  kind TypeKind NOT NULL DEFAULT 'scalar',
   name Ident PRIMARY KEY,
   pgtype PgType NOT NULL
 ) INHERITS (types);
 
 CREATE TABLE enumtypes (
+  kind TypeKind NOT NULL DEFAULT 'enum',
   values TEXT[]
 ) INHERITS (scalartypes);
 
 -- todo range
 
 CREATE TABLE compositetypes (
+  kind TypeKind NOT NULL DEFAULT 'composite',
   name Ident PRIMARY KEY
 ) INHERITS (types);
 
 CREATE TABLE tables (
+  kind TypeKind NOT NULL DEFAULT 'table',
   name Ident PRIMARY KEY,
   pk Ident[]
 ) INHERITS (compositetypes);
