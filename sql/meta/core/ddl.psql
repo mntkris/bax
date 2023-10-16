@@ -7,47 +7,55 @@ CREATE TABLE ddltypefields (
   owner Ident,
   id TEXT,
   name Ident,
-  type Type
+  type Type,
+  ispk BOOL DEFAULT FALSE,
+  desttable Ident DEFAULT NULL,
+  destfield Ident DEFAULT NULL,
+  cascade BOOL DEFAULT NULL
 );
 
 do $$
 DECLARE
-  typerec types%ROWTYPE;
+  tpe types%ROWTYPE;
 BEGIN
-  FOR typerec IN
+  FOR tpe IN
   	SELECT * FROM types 
   	WHERE kind IN ('composite', 'table')
   	ORDER BY serial
   LOOP
+	
+	INSERT INTO ddltypefields(kind, owner, id, name, type, ispk)
+	SELECT sf.kind, sf.owner, sf.id::TEXT, sf.name, sf.type, COALESCE(tpe.kind = 'table' AND sf.name=ANY(t.pk), FALSE)
+	FROM scalarfields sf
+	LEFT JOIN tables t ON t.serial = sf.serial
+	WHERE sf.owner = tpe.name;
+
 	INSERT INTO ddltypefields(kind, owner, id, name, type)
 	SELECT kind, owner, id::TEXT, name, type
-	FROM scalarfields WHERE owner = typerec.name
-	--
-	UNION ALL
-	SELECT kind, owner, id::TEXT, name, type
-	FROM compositefields WHERE owner = typerec.name AND inlineprefix IS NULL
-	--
-	UNION ALL  
-	SELECT DISTINCT tf.kind, tf.owner, cf.id || '-' || tf.id, cf.inlineprefix || tf.name, tf.type  -- TODO distinct
+	FROM compositefields WHERE owner = tpe.name AND inlineprefix IS NULL;
+	
+	INSERT INTO ddltypefields(kind, owner, id, name, type)
+	SELECT DISTINCT tf.kind, tf.owner, cf.id || '-' || tf.id, cf.inlineprefix || tf.name, tf.type  -- TODO ?distinct?
 	FROM compositefields cf
 	JOIN ddltypefields tf ON cf.type = tf.owner
-	WHERE cf.owner = typerec.name AND cf.inlineprefix IS NOT NULL
-	--
-	UNION ALL
-    SELECT r.kind, r.owner, r.id || '-' || sf.id, pkfname, sf.type
+	WHERE cf.owner = tpe.name AND cf.inlineprefix IS NOT NULL;
+	
+	INSERT INTO ddltypefields(kind, owner, id, name, type, desttable, destfield, cascade)
+    SELECT r.kind, r.owner, r.id || '-' || sf.id, pkfname, sf.type, r.destination, pkfname, r.cascade
     FROM refnfields r
     JOIN tables t ON r.destination = t.name,
     UNNEST(t.pk) pkfname
     JOIN scalarfields sf ON sf.name = pkfname
-    WHERE r.owner = typerec.name AND r.names IS NULL AND sf.owner = t.name
-	--
-    UNION ALL 
-	SELECT r.kind, r.owner, r.id || '-' || sf.id, fk.newname, sf.type 
+    WHERE r.owner = tpe.name AND r.names IS NULL AND sf.owner = t.name;
+	
+	INSERT INTO ddltypefields(kind, owner, id, name, type, desttable, destfield, cascade)
+	SELECT r.kind, r.owner, r.id || '-' || sf.id, fk.newname, sf.type, r.destination, fk.name, r.cascade 
 	FROM refnfields r
 	JOIN tables t ON r.destination = t.name, 
 	UNNEST(r.names, t.pk) AS fk(newname, name)
 	JOIN scalarfields sf ON sf.name = fk.name 
-	WHERE r.owner = typerec.name AND r.names IS NOT NULL AND sf.owner = t.name;
+	WHERE r.owner = tpe.name AND r.names IS NOT NULL AND sf.owner = t.name;
+  
   END LOOP;	
 END $$;
 
