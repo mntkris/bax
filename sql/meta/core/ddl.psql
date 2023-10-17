@@ -1,17 +1,19 @@
 -- WIP
 set search_path to meta;
 
-drop table if exists ddltypefields;
-CREATE TABLE ddltypefields (
+drop table if exists ddlfields;
+CREATE TABLE ddlfields (
   kind FieldKind,
-  owner Ident,
+  parent Ident,
   id TEXT,
   name Ident,
   type Type,
   ispk BOOL DEFAULT FALSE,
   desttable Ident DEFAULT NULL,
   destfield Ident DEFAULT NULL,
-  cascade BOOL DEFAULT NULL
+  cascade BOOL DEFAULT NULL,
+  UNIQUE (parent, id),
+  UNIQUE (parent, name)
 );
 
 do $$
@@ -24,23 +26,23 @@ BEGIN
   	ORDER BY serial
   LOOP
 	
-	INSERT INTO ddltypefields(kind, owner, id, name, type, ispk)
+	INSERT INTO ddlfields(kind, parent, id, name, type, ispk)
 	SELECT sf.kind, sf.owner, sf.id::TEXT, sf.name, sf.type, COALESCE(tpe.kind = 'table' AND sf.name=ANY(t.pk), FALSE)
 	FROM scalarfields sf
-	LEFT JOIN tables t ON t.serial = sf.serial
+	LEFT JOIN tables t ON t.name = sf.owner
 	WHERE sf.owner = tpe.name;
 
-	INSERT INTO ddltypefields(kind, owner, id, name, type)
+	INSERT INTO ddlfields(kind, parent, id, name, type)
 	SELECT kind, owner, id::TEXT, name, type
 	FROM compositefields WHERE owner = tpe.name AND inlineprefix IS NULL;
 	
-	INSERT INTO ddltypefields(kind, owner, id, name, type)
-	SELECT DISTINCT tf.kind, tf.owner, cf.id || '-' || tf.id, cf.inlineprefix || tf.name, tf.type  -- TODO ?distinct?
+	INSERT INTO ddlfields(kind, parent, id, name, type)
+	SELECT tf.kind, cf.owner, cf.id || '-' || tf.id, cf.inlineprefix || tf.name, tf.type
 	FROM compositefields cf
-	JOIN ddltypefields tf ON cf.type = tf.owner
+	JOIN ddlfields tf ON cf.type = tf.parent
 	WHERE cf.owner = tpe.name AND cf.inlineprefix IS NOT NULL;
 	
-	INSERT INTO ddltypefields(kind, owner, id, name, type, desttable, destfield, cascade)
+	INSERT INTO ddlfields(kind, parent, id, name, type, desttable, destfield, cascade)
     SELECT r.kind, r.owner, r.id || '-' || sf.id, pkfname, sf.type, r.destination, pkfname, r.cascade
     FROM refnfields r
     JOIN tables t ON r.destination = t.name,
@@ -48,7 +50,7 @@ BEGIN
     JOIN scalarfields sf ON sf.name = pkfname
     WHERE r.owner = tpe.name AND r.names IS NULL AND sf.owner = t.name;
 	
-	INSERT INTO ddltypefields(kind, owner, id, name, type, desttable, destfield, cascade)
+	INSERT INTO ddlfields(kind, parent, id, name, type, desttable, destfield, cascade)
 	SELECT r.kind, r.owner, r.id || '-' || sf.id, fk.newname, sf.type, r.destination, fk.name, r.cascade 
 	FROM refnfields r
 	JOIN tables t ON r.destination = t.name, 
@@ -59,6 +61,7 @@ BEGIN
   END LOOP;	
 END $$;
 
-select * from ddltypefields order by 2,3;
 
+
+select * from ddlfields order by 2,3;
 

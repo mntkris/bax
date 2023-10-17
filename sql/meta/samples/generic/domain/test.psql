@@ -21,10 +21,10 @@ CALL def_compositetypes(
   CompositeType('gen', 'Compo23',
     Inline(105, 'Compo2', prefix => ''),
     Inline(110, 'Compo3', prefix => 'co3_', description => 'inline with prefix'),
-    Scalar(115, 'text50', 'Text50')  
+    Scalar(115, 'ctext50', 'Text50')  
   ),
   CompositeType('gen', 'Compo32',
-    Scalar(115, 'text50', 'Text50'),
+    Scalar(115, 'dtext50', 'Text50'),
     Composite(110, 'compo3', 'Compo3'),
     Composite(105, 'compo2', 'Compo2')
   )
@@ -58,11 +58,11 @@ CALL def_tables(
 
 CALL def_compositetypes(
   CompositeType('nest', 'C3',
-    Scalar(105, 's1', 'Text10'),
-    Scalar(110, 's2', 'Text10')
+    Scalar(105, 's3', 'Text10'),
+    Scalar(110, 'q2', 'Text10')
   ),
   CompositeType('nest', 'C2',
-    Scalar(105, 's1', 'Text10'),
+    Scalar(105, 's2', 'Text10'),
     Inline(110, 'C3', prefix => 'c3-')
   ),
   CompositeType('nest', 'C1',

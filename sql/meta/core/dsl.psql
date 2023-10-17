@@ -47,7 +47,7 @@ CREATE TABLE fields (
   serial SERIAL,
   kind FieldKind NOT NULL, 
   owner Ident NOT NULL REFERENCES compositetypes(name),
-  id INT NOT NULL,
+  id INT NOT NULL CHECK (id BETWEEN 100 AND 999),
   name Ident NOT NULL,
   description Description
 );
