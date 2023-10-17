@@ -1,7 +1,10 @@
--- WIP
-set search_path to meta;
+-- defaults in ddlcreate (?)
 
-drop table if exists ddlfields;
+-- WIP
+--set search_path to meta;
+
+--drop table if exists ddlfields cascade;
+--drop procedure if exists fillddlfields;
 CREATE TABLE ddlfields (
   kind FieldKind,
   parent Ident,
@@ -13,16 +16,17 @@ CREATE TABLE ddlfields (
   destfield Ident DEFAULT NULL,
   cascade BOOL DEFAULT NULL,
   UNIQUE (parent, id),
-  UNIQUE (parent, name)
+  PRIMARY KEY (parent, name)
 );
 
-do $$
+CREATE PROCEDURE fillddlfields() AS $BODY$
+#variable_conflict use_variable
 DECLARE
   tpe types%ROWTYPE;
 BEGIN
   FOR tpe IN
-  	SELECT * FROM types 
-  	WHERE kind IN ('composite', 'table')
+  	SELECT * FROM compositetypes 
+  	--WHERE kind IN ('composite', 'table')
   	ORDER BY serial
   LOOP
 	
@@ -59,9 +63,34 @@ BEGIN
 	WHERE r.owner = tpe.name AND r.names IS NOT NULL AND sf.owner = t.name;
   
   END LOOP;	
-END $$;
+END
+$BODY$ LANGUAGE PLPGSQL;
+--call fillddlfields();
+--select * from ddlfields order by 2,3;
 
+CREATE or replace FUNCTION ddlcreate(field ddlfields) RETURNS TEXT AS $BODY$
+#variable_conflict use_variable
+DECLARE
+BEGIN
+  RETURN FORMAT($DDL$  %s %s$DDL$, field.name, field.type);
+END
+$BODY$ LANGUAGE PLPGSQL IMMUTABLE;
+--select (f).ddlcreate from ddlfields f;
 
-
-select * from ddlfields order by 2,3;
-
+CREATE or replace FUNCTION ddlcreate(tpe types) RETURNS TEXT AS $BODY$
+#variable_conflict use_variable
+DECLARE
+  fields TEXT;
+BEGIN
+  SELECT STRING_AGG((f).ddlcreate, E',\n' ORDER BY f.id) INTO fields
+  FROM ddlfields f WHERE f.parent = tpe.name;
+ 
+  IF tpe.kind = 'composite' THEN
+    RETURN FORMAT(E'CREATE TYPE %s AS (\n%s\n);', tpe.name, fields);
+  END IF;
+  IF tpe.kind = 'table' THEN
+    RETURN FORMAT(E'CREATE TABLE %s (\n%s\n);', tpe.name, fields);
+  END IF;
+END
+$BODY$ LANGUAGE PLPGSQL IMMUTABLE;
+--select (t).ddlcreate from compositetypes t order by serial;

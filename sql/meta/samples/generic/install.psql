@@ -12,6 +12,8 @@ select * from scalarfields;
 select * from compositefields;
 select * from refnfields;
 select * from tables;
+call fillddlfields();
+select (t).ddlcreate from compositetypes t order by serial;
 /*
 --  config data in code (inserts)
 create (enumy puste)

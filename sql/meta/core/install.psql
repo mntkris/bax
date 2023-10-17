@@ -5,3 +5,4 @@ SET search_path TO meta;
 
 \include_relative utils.psql
 \include_relative dsl.psql
+\include_relative ddl.psql
