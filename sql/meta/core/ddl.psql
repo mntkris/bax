@@ -1,5 +1,3 @@
--- defaults in ddlcreate (?)
-
 -- WIP
 --set search_path to meta;
 
@@ -7,7 +5,7 @@
 --drop procedure if exists fillddlfields;
 CREATE TABLE ddlfields (
   kind FieldKind,
-  parent Ident,
+  parenttype Ident,
   id TEXT,
   name Ident,
   type Type,
@@ -15,8 +13,8 @@ CREATE TABLE ddlfields (
   desttable Ident DEFAULT NULL,
   destfield Ident DEFAULT NULL,
   cascade BOOL DEFAULT NULL,
-  UNIQUE (parent, id),
-  PRIMARY KEY (parent, name)
+  UNIQUE (parenttype, id),
+  PRIMARY KEY (parenttype, name)
 );
 
 CREATE PROCEDURE fillddlfields() AS $BODY$
@@ -24,43 +22,46 @@ CREATE PROCEDURE fillddlfields() AS $BODY$
 DECLARE
   tpe types%ROWTYPE;
 BEGIN
-  FOR tpe IN
-  	SELECT * FROM compositetypes 
-  	--WHERE kind IN ('composite', 'table')
-  	ORDER BY serial
-  LOOP
+  FOR tpe IN SELECT * FROM compositetypes ORDER BY serial LOOP
 	
-	INSERT INTO ddlfields(kind, parent, id, name, type, ispk)
-	SELECT sf.kind, sf.owner, sf.id::TEXT, sf.name, sf.type, COALESCE(tpe.kind = 'table' AND sf.name=ANY(t.pk), FALSE)
-	FROM scalarfields sf
-	LEFT JOIN tables t ON t.name = sf.owner
-	WHERE sf.owner = tpe.name;
+    INSERT INTO ddlfields(kind, parenttype, id, name, type, ispk)
+    SELECT sf.kind, sf.ownertype, sf.id::TEXT, sf.name, sf.type, 
+      COALESCE(tpe.kind = 'table' AND sf.name=ANY(t.pk), FALSE)
+    FROM scalarfields sf
+    LEFT JOIN tables t ON t.name = sf.ownertype
+    WHERE sf.ownertype = tpe.name;
 
-	INSERT INTO ddlfields(kind, parent, id, name, type)
-	SELECT kind, owner, id::TEXT, name, type
-	FROM compositefields WHERE owner = tpe.name AND inlineprefix IS NULL;
-	
-	INSERT INTO ddlfields(kind, parent, id, name, type)
-	SELECT tf.kind, cf.owner, cf.id || '-' || tf.id, cf.inlineprefix || tf.name, tf.type
-	FROM compositefields cf
-	JOIN ddlfields tf ON cf.type = tf.parent
-	WHERE cf.owner = tpe.name AND cf.inlineprefix IS NOT NULL;
-	
-	INSERT INTO ddlfields(kind, parent, id, name, type, desttable, destfield, cascade)
-    SELECT r.kind, r.owner, r.id || '-' || sf.id, pkfname, sf.type, r.destination, pkfname, r.cascade
+    INSERT INTO ddlfields(kind, parenttype, id, name, type)
+    SELECT kind, ownertype, id::TEXT, name, type
+    FROM compositefields 
+    WHERE ownertype = tpe.name AND inlineprefix IS NULL;
+
+    INSERT INTO ddlfields(kind, parenttype, id, name, type)
+    SELECT tf.kind, cf.ownertype, cf.id || '-' || tf.id, 
+      cf.inlineprefix || tf.name, tf.type
+    FROM compositefields cf
+    JOIN ddlfields tf ON cf.type = tf.parenttype
+    WHERE cf.ownertype = tpe.name AND cf.inlineprefix IS NOT NULL;
+
+    INSERT INTO ddlfields(
+      kind, parenttype, id, name, type, desttable, destfield, cascade)
+    SELECT r.kind, r.ownertype, r.id || '-' || sf.id, pkfname, sf.type, 
+      r.destination, pkfname, r.cascade
     FROM refnfields r
     JOIN tables t ON r.destination = t.name,
     UNNEST(t.pk) pkfname
     JOIN scalarfields sf ON sf.name = pkfname
-    WHERE r.owner = tpe.name AND r.names IS NULL AND sf.owner = t.name;
-	
-	INSERT INTO ddlfields(kind, parent, id, name, type, desttable, destfield, cascade)
-	SELECT r.kind, r.owner, r.id || '-' || sf.id, fk.newname, sf.type, r.destination, fk.name, r.cascade 
-	FROM refnfields r
-	JOIN tables t ON r.destination = t.name, 
-	UNNEST(r.names, t.pk) AS fk(newname, name)
-	JOIN scalarfields sf ON sf.name = fk.name 
-	WHERE r.owner = tpe.name AND r.names IS NOT NULL AND sf.owner = t.name;
+    WHERE r.ownertype = tpe.name AND r.names IS NULL AND sf.ownertype = t.name;
+
+    INSERT INTO ddlfields(
+      kind, parenttype, id, name, type, desttable, destfield, cascade)
+    SELECT r.kind, r.ownertype, r.id || '-' || sf.id, fk.newname, sf.type,
+      r.destination, fk.name, r.cascade 
+    FROM refnfields r
+    JOIN tables t ON r.destination = t.name, 
+    UNNEST(r.names, t.pk) AS fk(newname, name)
+    JOIN scalarfields sf ON sf.name = fk.name 
+    WHERE r.ownertype = tpe.name AND r.names IS NOT NULL AND sf.ownertype = t.name;
   
   END LOOP;	
 END
@@ -68,7 +69,17 @@ $BODY$ LANGUAGE PLPGSQL;
 --call fillddlfields();
 --select * from ddlfields order by 2,3;
 
-CREATE or replace FUNCTION ddlcreate(field ddlfields) RETURNS TEXT AS $BODY$
+CREATE FUNCTION astext(ns Namespace) RETURNS TEXT AS $BODY$
+  SELECT CASE CARDINALITY(ns)
+    WHEN 0 THEN ''
+    WHEN 1 THEN ns[1] || '.'
+    ELSE ns[1] || '.' || ARRAY_TO_STRING(ns[2:], '_') || '_'
+  END;
+$BODY$ LANGUAGE SQL IMMUTABLE;
+--select (('aa-bb-cc').arr).astext;
+
+
+CREATE FUNCTION ddlcreate(field ddlfields) RETURNS TEXT AS $BODY$
 #variable_conflict use_variable
 DECLARE
 BEGIN
@@ -77,19 +88,21 @@ END
 $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 --select (f).ddlcreate from ddlfields f;
 
-CREATE or replace FUNCTION ddlcreate(tpe types) RETURNS TEXT AS $BODY$
+CREATE FUNCTION ddlcreate(tpe types) RETURNS TEXT AS $BODY$
 #variable_conflict use_variable
 DECLARE
   fields TEXT;
 BEGIN
   SELECT STRING_AGG((f).ddlcreate, E',\n' ORDER BY f.id) INTO fields
-  FROM ddlfields f WHERE f.parent = tpe.name;
+  FROM ddlfields f WHERE f.parenttype = tpe.name;
  
   IF tpe.kind = 'composite' THEN
-    RETURN FORMAT(E'CREATE TYPE %s AS (\n%s\n);', tpe.name, fields);
+    RETURN FORMAT(E'CREATE TYPE %s%s AS (\n%s\n);', 
+                  (tpe.ns).astext, tpe.name, fields);
   END IF;
   IF tpe.kind = 'table' THEN
-    RETURN FORMAT(E'CREATE TABLE %s (\n%s\n);', tpe.name, fields);
+    RETURN FORMAT(E'CREATE TABLE %s%s (\n%s\n);',
+                  (tpe.ns).astext, tpe.name, fields);
   END IF;
 END
 $BODY$ LANGUAGE PLPGSQL IMMUTABLE;

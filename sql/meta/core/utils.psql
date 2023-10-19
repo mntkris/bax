@@ -8,7 +8,6 @@ CREATE DOMAIN Namespace Ident[];
 CREATE DOMAIN Description TEXT;
 CREATE DOMAIN PgType TEXT;
 CREATE DOMAIN Type TEXT;
--- CREATE DOMAIN Expr TEXT;
 
 CREATE FUNCTION arr(s TEXT) RETURNS Namespace AS $BODY$
   SELECT STRING_TO_ARRAY(REPLACE(REPLACE(s,'-',','), ' ',''), ',');
@@ -42,3 +41,29 @@ $BODY$ LANGUAGE SQL IMMUTABLE;
 CREATE FUNCTION notnull(x ANYELEMENT) RETURNS BOOL AS $BODY$
   SELECT x IS DISTINCT FROM NULL;
 $BODY$ LANGUAGE SQL IMMUTABLE;
+
+
+CREATE TYPE ExprParam AS (
+  name TEXT, value TEXT
+);
+CREATE FUNCTION ExprParam(
+  name TEXT, value TEXT
+) RETURNS ExprParam AS $BODY$
+  SELECT name, value;
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION depar(
+  expr TEXT, VARIADIC params ExprParam[]
+) RETURNS TEXT AS $BODY$
+#variable_conflict use_variable
+DECLARE
+  ret TEXT = expr;
+  par ExprParam;
+BEGIN
+  FOREACH par IN ARRAY params LOOP
+	ret = REPLACE(ret, par.name, par.value);
+  END LOOP;
+  RETURN ret;  
+END
+$BODY$ LANGUAGE PLPGSQL IMMUTABLE;
+--select depar('@@1111@@ sdcm,hsdfjksdf @@3333@@', ExprParam('@@1111@@', 'AAAA'), ExprParam('@@3333@@', 'BBBBB'));

@@ -46,7 +46,7 @@ $BODY$ LANGUAGE SQL IMMUTABLE;
 CREATE TABLE fields (
   serial SERIAL,
   kind FieldKind NOT NULL, 
-  owner Ident NOT NULL REFERENCES compositetypes(name),
+  ownertype Ident NOT NULL REFERENCES compositetypes(name),
   id INT NOT NULL CHECK (id BETWEEN 100 AND 999),
   name Ident NOT NULL,
   description Description
@@ -55,14 +55,14 @@ CREATE TABLE fields (
 CREATE TABLE scalarfields (
   kind FieldKind NOT NULL DEFAULT 'scalar',
   type Type NOT NULL REFERENCES scalartypes(name),
-  UNIQUE (owner, id)
+  UNIQUE (ownertype, id)
 ) INHERITS (fields);
 
 CREATE TABLE compositefields (
   kind FieldKind NOT NULL DEFAULT 'composite',
   type Type NOT NULL REFERENCES compositetypes(name),
   inlineprefix TEXT, -- gdy false to nie rozwijane
-  UNIQUE (owner, id)
+  UNIQUE (ownertype, id)
 ) INHERITS (fields);
 
 CREATE TABLE refnfields (
@@ -70,12 +70,12 @@ CREATE TABLE refnfields (
   destination Ident NOT NULL REFERENCES tables(name),
   cascade BOOL DEFAULT FALSE,
   names Ident[],
-  UNIQUE (owner, id)
+  UNIQUE (ownertype, id)
 ) INHERITS (fields);
 
 CREATE TABLE ref1fields (
   kind FieldKind NOT NULL DEFAULT 'ref1',
-  UNIQUE (owner, id)
+  UNIQUE (ownertype, id)
 ) INHERITS (refnfields);
 
 -- ============================================================
@@ -106,7 +106,6 @@ CREATE FUNCTION CompositeExt (
   SELECT ROW(type, inlineprefix)::CompositeExt;
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
--- TODO ?reeng zrobic typ 'bazowy' Ref?
 CREATE TYPE RefNExt_T AS (
   destination Ident,
   cascade BOOL,
@@ -282,11 +281,11 @@ BEGIN
   INSERT INTO compositetypes(ns, name)
   SELECT ct.ns, ct.name FROM UNNEST(cts) ct;
 
-  INSERT INTO scalarfields(owner, id, name, description, type)
+  INSERT INTO scalarfields(ownertype, id, name, description, type)
   SELECT ct.name, f.id, f.name, f.description, (f.scalarext).type
   FROM UNNEST(cts) ct, UNNEST(ct.fields) f WHERE (f.scalarext).notnull;
 
-  INSERT INTO compositefields(owner, id, name, description, type, inlineprefix)
+  INSERT INTO compositefields(ownertype, id, name, description, type, inlineprefix)
   SELECT ct.name, f.id, f.name, f.description, (f.compositeext).type, (f.compositeext).inlineprefix 
   FROM UNNEST(cts) ct, UNNEST(ct.fields) f WHERE (f.compositeext).notnull;
 
@@ -324,21 +323,21 @@ BEGIN
   INSERT INTO tables(ns, name, pk)
   SELECT gt.ns, gt.name, gt.pk FROM UNNEST(gts) gt;
 
-  INSERT INTO scalarfields(owner, id, name, description, type)
+  INSERT INTO scalarfields(ownertype, id, name, description, type)
   SELECT gt.name, f.id, f.name, f.description, (f.scalarext).type
   FROM UNNEST(gts) gt, UNNEST(gt.fields) f WHERE (f.scalarext).notnull;
 
-  INSERT INTO compositefields(owner, id, name, description, type, inlineprefix)
+  INSERT INTO compositefields(ownertype, id, name, description, type, inlineprefix)
   SELECT gt.name, f.id, f.name, f.description, (f.compositeext).type, (f.compositeext).inlineprefix 
   FROM UNNEST(gts) gt, UNNEST(gt.fields) f WHERE (f.compositeext).notnull;
 
-  INSERT INTO refnfields(owner, id, name, description, 
+  INSERT INTO refnfields(ownertype, id, name, description, 
                          destination, cascade, names)
   SELECT gt.name, f.id, f.name, f.description,
     (f.refnext).destination, (f.refnext).cascade, (f.refnext).names
   FROM UNNEST(gts) gt, UNNEST(gt.fields) f WHERE (f.refnext).notnull;
 
-  INSERT INTO ref1fields(owner, id, name, description, 
+  INSERT INTO ref1fields(ownertype, id, name, description, 
                          destination, cascade, names)
   SELECT gt.name, f.id, f.name, f.description,
     (f.ref1ext).destination, (f.ref1ext).cascade, (f.ref1ext).names
