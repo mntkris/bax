@@ -1,3 +1,15 @@
+CALL def_validationtemplates(
+  Validation('between',    $EXPR$``FIELD`` BETWEEN ``FROM`` AND ``TO``$EXPR$),
+  Validation('gte',        $EXPR$``FIELD`` >= ``VALUE``$EXPR$),
+  Validation('lte',        $EXPR$``FIELD`` <= ``VALUE``$EXPR$),
+  Validation('gt',         $EXPR$``FIELD`` > ``VALUE``$EXPR$),
+  Validation('lt',         $EXPR$``FIELD`` < ``VALUE``$EXPR$),
+  Validation('positive',   $EXPR$``FIELD`` > 0$EXPR$),
+  Validation('nonnegative',$EXPR$``FIELD`` >= 0$EXPR$),
+  Validation('like',       $EXPR$``FIELD`` LIKE ``VALUE``$EXPR$)
+  -- TODO regex
+);
+
 CALL def_scalartypes(
   ScalarType('gen', 'Text10', 'VARCHAR(10)'),
   ScalarType('gen', 'Text20', 'VARCHAR(20)'),

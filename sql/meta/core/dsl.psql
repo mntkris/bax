@@ -1,7 +1,33 @@
 -- 
--- constraint
---
 -- props
+
+CREATE TYPE Validation_T AS (
+  name Ident,
+  expr TEXT
+);
+CREATE DOMAIN Validation AS Validation_T
+  CONSTRAINT notempty CHECK(
+    (VALUE).name.notempty AND
+    (VALUE).expr.notempty);
+CREATE FUNCTION Validation (
+  name Ident,
+  expr TEXT
+) RETURNS Validation AS $BODY$
+  SELECT ROW(name, expr)::Validation;
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
+CREATE TABLE validationtemplates OF Validation_T;
+
+CREATE PROCEDURE def_validationtemplates(
+  VARIADIC validations Validation[]
+) AS $BODY$
+BEGIN
+  INSERT INTO validationtemplates(name, expr)
+  SELECT * FROM UNNEST(validations);
+END
+$BODY$ LANGUAGE PLPGSQL;
+
+
 
 CREATE TYPE TypeKind AS ENUM ('scalar', 'enum', 'composite', 'table');
 
