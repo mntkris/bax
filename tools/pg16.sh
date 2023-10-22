@@ -13,7 +13,7 @@ cd $P/src/contrib &&
 cd $P/src &&
 # --with-llvm
 ./configure --prefix=$P \
-  --enable-nls='pl'  --with-perl --with-python --with-tcl \
+  --enable-nls='pl' --with-llvm --with-perl --with-python --with-tcl \
   --with-icu --with-lz4 --with-zstd --with-openssl \
   --with-ldap --with-pam --with-systemd --with-ossp-uuid \
   --with-libxml --with-libxslt --with-pgport=55160 &&
@@ -47,3 +47,5 @@ echo "$P/bin/pg_ctl reload -D $P/data" > $P/reload && chmod +x $P/reload &&
 $P/start &&
 $P/bin/createdb $USER &&
 $P/bin/psql --list
+
+# sudo apt install build-essential llvm clang libreadline-dev zlib1g-dev libssl-dev libpam-dev libxslt-dev libldap-dev libossp-uuid-dev libsystemd-dev gettext tcl-dev libperl-dev python3-dev pkg-config libzstd-dev
