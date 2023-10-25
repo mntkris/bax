@@ -1,14 +1,14 @@
-CALL def_validationtemplates(
-  Validation('between',    $EXPR$``FIELD`` BETWEEN ``FROM`` AND ``TO``$EXPR$),
-  Validation('gte',        $EXPR$``FIELD`` >= ``VALUE``$EXPR$),
-  Validation('lte',        $EXPR$``FIELD`` <= ``VALUE``$EXPR$),
-  Validation('gt',         $EXPR$``FIELD`` > ``VALUE``$EXPR$),
-  Validation('lt',         $EXPR$``FIELD`` < ``VALUE``$EXPR$),
-  Validation('positive',   $EXPR$``FIELD`` > 0$EXPR$),
-  Validation('nonnegative',$EXPR$``FIELD`` >= 0$EXPR$),
-  Validation('like',       $EXPR$``FIELD`` LIKE ``VALUE``$EXPR$)
-  -- TODO regex
-);
+-- CALL def_validations(
+--   Validation('between',    $EXPR$``FIELD`` BETWEEN ``FROM`` AND ``TO``$EXPR$),
+--   Validation('gte',        $EXPR$``FIELD`` >= ``VALUE``$EXPR$),
+--   Validation('lte',        $EXPR$``FIELD`` <= ``VALUE``$EXPR$),
+--   Validation('gt',         $EXPR$``FIELD`` > ``VALUE``$EXPR$),
+--   Validation('lt',         $EXPR$``FIELD`` < ``VALUE``$EXPR$),
+--   Validation('positive',   $EXPR$``FIELD`` > 0$EXPR$),
+--   Validation('nonnegative',$EXPR$``FIELD`` >= 0$EXPR$),
+--   Validation('like',       $EXPR$``FIELD`` LIKE ``VALUE``$EXPR$)
+--   -- TODO regex
+-- );
 
 CALL def_scalartypes(
   ScalarType('gen', 'Text10', 'VARCHAR(10)'),
@@ -22,7 +22,7 @@ CALL def_scalartypes(
 
 CALL def_compositetypes(
   CompositeType('gen', 'Compo2',
-    Scalar(105, 'unique', 'Unique', description => 'guid'),
+    Scalar(105, 'unique', 'Unique', notempty => TRUE, description => 'guid'),
     Scalar(110, 'text10', 'Text10')
   ),
   CompositeType('gen', 'Compo3',

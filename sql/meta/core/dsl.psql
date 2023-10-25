@@ -1,31 +1,8 @@
--- 
--- props
-
-CREATE TYPE Validation_T AS (
-  name Ident,
-  expr TEXT
+-- TODO dokonczyc
+CREATE TYPE Prop_T AS (
+  x INT
 );
-CREATE DOMAIN Validation AS Validation_T
-  CONSTRAINT notempty CHECK(
-    (VALUE).name.notempty AND
-    (VALUE).expr.notempty);
-CREATE FUNCTION Validation (
-  name Ident,
-  expr TEXT
-) RETURNS Validation AS $BODY$
-  SELECT ROW(name, expr)::Validation;
-$BODY$ LANGUAGE SQL IMMUTABLE;
-
-CREATE TABLE validationtemplates OF Validation_T;
-
-CREATE PROCEDURE def_validationtemplates(
-  VARIADIC validations Validation[]
-) AS $BODY$
-BEGIN
-  INSERT INTO validationtemplates(name, expr)
-  SELECT * FROM UNNEST(validations);
-END
-$BODY$ LANGUAGE PLPGSQL;
+CREATE DOMAIN Prop AS Prop_T;
 
 
 
@@ -69,29 +46,34 @@ CREATE FUNCTION fieldkind(s TEXT) RETURNS FieldKind AS $BODY$
   SELECT s::FieldKind;
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
-CREATE TABLE fields (
+CREATE TABLE fields(
   serial SERIAL,
   kind FieldKind NOT NULL, 
   ownertype Ident NOT NULL REFERENCES compositetypes(name),
   id INT NOT NULL CHECK (id BETWEEN 100 AND 999),
   name Ident NOT NULL,
+  notempty BOOL NOT NULL DEFAULT FALSE,
+  indexed BOOL NOT NULL DEFAULT FALSE,
+  isunique BOOL NOT NULL DEFAULT FALSE,
+  props Prop[] NOT NULL DEFAULT '{}',
+  validations Ident[] NOT NULL DEFAULT '{}',
   description Description
 );
 
-CREATE TABLE scalarfields (
+CREATE TABLE scalarfields(
   kind FieldKind NOT NULL DEFAULT 'scalar',
   type Type NOT NULL REFERENCES scalartypes(name),
   UNIQUE (ownertype, id)
 ) INHERITS (fields);
 
-CREATE TABLE compositefields (
+CREATE TABLE compositefields(
   kind FieldKind NOT NULL DEFAULT 'composite',
   type Type NOT NULL REFERENCES compositetypes(name),
   inlineprefix TEXT, -- gdy false to nie rozwijane
   UNIQUE (ownertype, id)
 ) INHERITS (fields);
 
-CREATE TABLE refnfields (
+CREATE TABLE refnfields(
   kind FieldKind NOT NULL DEFAULT 'refn',
   destination Ident NOT NULL REFERENCES tables(name),
   cascade BOOL DEFAULT FALSE,
@@ -99,7 +81,7 @@ CREATE TABLE refnfields (
   UNIQUE (ownertype, id)
 ) INHERITS (fields);
 
-CREATE TABLE ref1fields (
+CREATE TABLE ref1fields(
   kind FieldKind NOT NULL DEFAULT 'ref1',
   UNIQUE (ownertype, id)
 ) INHERITS (refnfields);
@@ -170,12 +152,18 @@ $BODY$ LANGUAGE SQL IMMUTABLE;
 CREATE TYPE Field_T AS (
   id INT,
   name Ident,
+  notempty BOOL,
+  indexed BOOL,
+  isunique BOOL,
+  props Prop[],
+  validations Ident[],
   description Description,
   scalarext ScalarExt,
   compositeext CompositeExt,
   refnext RefNExt,
   ref1ext Ref1Ext
 );
+--
 CREATE DOMAIN Field AS Field_T
   CONSTRAINT exactlyone CHECK (
     truecount(ARRAY[
@@ -187,9 +175,15 @@ CREATE DOMAIN Field AS Field_T
   CONSTRAINT notempty CHECK (
     (VALUE).id.notempty AND
     (VALUE).name.notempty);
+--
 CREATE FUNCTION Field (
   id INT,
   name Ident,
+  notempty BOOL DEFAULT FALSE,
+  indexed BOOL DEFAULT FALSE,
+  isunique BOOL DEFAULT FALSE,
+  props Prop[] DEFAULT '{}',
+  validations Ident[] DEFAULT '{}',
   description Description DEFAULT NULL,
   scalarext ScalarExt DEFAULT NULL,
   compositeext CompositeExt DEFAULT NULL,
@@ -197,8 +191,8 @@ CREATE FUNCTION Field (
   ref1ext Ref1Ext DEFAULT NULL
 ) RETURNS Field AS $BODY$
   SELECT (
-    id, name, description, 
-    scalarext, compositeext, refnext, ref1ext
+    id, name, notempty, indexed, isunique, props, validations, 
+    description, scalarext, compositeext, refnext, ref1ext
   )::Field;
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
@@ -206,28 +200,48 @@ CREATE FUNCTION Scalar(
   id INT,
   name Ident,
   type Type,
+  notempty BOOL DEFAULT FALSE,
+  indexed BOOL DEFAULT FALSE,
+  isunique BOOL DEFAULT FALSE,
+  props Prop[] DEFAULT '{}',
+  validations Ident[] DEFAULT '{}',
   description Description DEFAULT NULL
 ) RETURNS Field AS $BODY$
-  SELECT Field(id, name, description, scalarext => ScalarExt(type => type));
+  SELECT Field(
+    id, name, notempty, indexed, isunique, props, validations, description,
+    scalarext => ScalarExt(type => type));
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
 CREATE FUNCTION Composite(
   id INT,
   name Ident,
   type Type,
+  notempty BOOL DEFAULT FALSE,
+  indexed BOOL DEFAULT FALSE,
+  isunique BOOL DEFAULT FALSE,
+  props Prop[] DEFAULT '{}',
+  validations Ident[] DEFAULT '{}',
   description Description DEFAULT NULL
 ) RETURNS Field AS $BODY$
-  SELECT Field(id, name, description, compositeext => CompositeExt(type => type));
+  SELECT Field(
+    id, name, notempty, indexed, isunique, props, validations, description,
+    compositeext => CompositeExt(type => type));
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
 CREATE FUNCTION Inline(
   id INT,
   type Type,
   prefix TEXT DEFAULT NULL,
+  notempty BOOL DEFAULT FALSE,
+  indexed BOOL DEFAULT FALSE,
+  isunique BOOL DEFAULT FALSE,
+  props Prop[] DEFAULT '{}',
+  validations Ident[] DEFAULT '{}',
   description Description DEFAULT NULL
 ) RETURNS Field AS $BODY$
-  SELECT Field(id, 'inline_' || id, description, compositeext => CompositeExt(
-    type => type, inlineprefix => prefix));
+  SELECT Field(
+    id, 'inline_' || id, notempty, indexed, isunique, props, validations, description,
+    compositeext => CompositeExt(type => type, inlineprefix => prefix));
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
 CREATE FUNCTION RefN(
@@ -235,10 +249,15 @@ CREATE FUNCTION RefN(
   destination Ident,
   cascade BOOL DEFAULT FALSE,
   names Text DEFAULT NULL,
+  notempty BOOL DEFAULT FALSE,
+  indexed BOOL DEFAULT FALSE,
+  isunique BOOL DEFAULT FALSE,
+  props Prop[] DEFAULT '{}',
+  validations Ident[] DEFAULT '{}',
   description Description DEFAULT NULL
 ) RETURNS Field AS $BODY$
-  SELECT Field(id, 'refn_' || id, description, refnext => RefNExt(
-    destination => destination, cascade => cascade, names => names.arr));
+  SELECT Field(id, 'refn_' || id, notempty, indexed, isunique, props, validations, description,
+  refnext => RefNExt(destination => destination, cascade => cascade, names => names.arr));
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
 CREATE FUNCTION Ref1(
@@ -246,10 +265,16 @@ CREATE FUNCTION Ref1(
   destination Ident,
   cascade BOOL DEFAULT FALSE,
   names Text DEFAULT NULL,
+  notempty BOOL DEFAULT FALSE,
+  indexed BOOL DEFAULT FALSE,
+  isunique BOOL DEFAULT FALSE,
+  props Prop[] DEFAULT '{}',
+  validations Ident[] DEFAULT '{}',
   description Description DEFAULT NULL
 ) RETURNS Field AS $BODY$
-  SELECT Field(id, 'ref1_' || id, description, ref1ext => Ref1Ext(
-    destination => destination, cascade => cascade, names => names.arr));
+  SELECT Field(
+    id, 'ref1_' || id, notempty, indexed, isunique, props, validations, description,
+    ref1ext => Ref1Ext(destination => destination, cascade => cascade, names => names.arr));
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
 -- ===================================================
@@ -307,12 +332,16 @@ BEGIN
   INSERT INTO compositetypes(ns, name)
   SELECT ct.ns, ct.name FROM UNNEST(cts) ct;
 
-  INSERT INTO scalarfields(ownertype, id, name, description, type)
-  SELECT ct.name, f.id, f.name, f.description, (f.scalarext).type
+  INSERT INTO scalarfields(
+    ownertype, id, name, notempty, indexed, isunique, props, validations, description, type)
+  SELECT ct.name, f.id, f.name, f.notempty, f.indexed, f.isunique, f.props, f.validations,
+    f.description, (f.scalarext).type
   FROM UNNEST(cts) ct, UNNEST(ct.fields) f WHERE (f.scalarext).notnull;
 
-  INSERT INTO compositefields(ownertype, id, name, description, type, inlineprefix)
-  SELECT ct.name, f.id, f.name, f.description, (f.compositeext).type, (f.compositeext).inlineprefix 
+  INSERT INTO compositefields(
+    ownertype, id, name, notempty, indexed, isunique, props, validations, description, type, inlineprefix)
+  SELECT ct.name, f.id, f.name, f.notempty, f.indexed, f.isunique, f.props, f.validations, f.description, 
+    (f.compositeext).type, (f.compositeext).inlineprefix 
   FROM UNNEST(cts) ct, UNNEST(ct.fields) f WHERE (f.compositeext).notnull;
 
   RETURN;
@@ -349,23 +378,27 @@ BEGIN
   INSERT INTO tables(ns, name, pk)
   SELECT gt.ns, gt.name, gt.pk FROM UNNEST(gts) gt;
 
-  INSERT INTO scalarfields(ownertype, id, name, description, type)
-  SELECT gt.name, f.id, f.name, f.description, (f.scalarext).type
+  INSERT INTO scalarfields(
+    ownertype, id, name, notempty, indexed, isunique, props, validations, description, type)
+  SELECT gt.name, f.id, f.name, f.notempty, f.indexed, f.isunique, f.props, f.validations,
+    f.description, (f.scalarext).type
   FROM UNNEST(gts) gt, UNNEST(gt.fields) f WHERE (f.scalarext).notnull;
 
-  INSERT INTO compositefields(ownertype, id, name, description, type, inlineprefix)
-  SELECT gt.name, f.id, f.name, f.description, (f.compositeext).type, (f.compositeext).inlineprefix 
+  INSERT INTO compositefields(
+    ownertype, id, name, notempty, indexed, isunique, props, validations, description, type, inlineprefix)
+  SELECT gt.name, f.id, f.name, f.notempty, f.indexed, f.isunique, f.props, f.validations, f.description,
+    (f.compositeext).type, (f.compositeext).inlineprefix 
   FROM UNNEST(gts) gt, UNNEST(gt.fields) f WHERE (f.compositeext).notnull;
 
-  INSERT INTO refnfields(ownertype, id, name, description, 
-                         destination, cascade, names)
-  SELECT gt.name, f.id, f.name, f.description,
+  INSERT INTO refnfields(
+    ownertype, id, name, notempty, indexed, isunique, props, validations, description, destination, cascade, names)
+  SELECT gt.name, f.id, f.name, f.notempty, f.indexed, f.isunique, f.props, f.validations, f.description,
     (f.refnext).destination, (f.refnext).cascade, (f.refnext).names
   FROM UNNEST(gts) gt, UNNEST(gt.fields) f WHERE (f.refnext).notnull;
 
-  INSERT INTO ref1fields(ownertype, id, name, description, 
-                         destination, cascade, names)
-  SELECT gt.name, f.id, f.name, f.description,
+  INSERT INTO ref1fields(
+    ownertype, id, name, notempty, indexed, isunique, props, validations, description, destination, cascade, names)
+  SELECT gt.name, f.id, f.name, f.notempty, f.indexed, f.isunique, f.props, f.validations, f.description,
     (f.ref1ext).destination, (f.ref1ext).cascade, (f.ref1ext).names
   FROM UNNEST(gts) gt, UNNEST(gt.fields) f WHERE (f.ref1ext).notnull;
   
@@ -373,3 +406,55 @@ BEGIN
 END
 $BODY$ LANGUAGE PLPGSQL;
 
+
+set search_path to meta;
+CREATE FUNCTION Prop(
+  sch Ident,
+  name Ident,
+  partype Type,
+  rettype TYPE,
+  expr TEXT,
+  self Ident DEFAULT 'self'
+) RETURNS TEXT AS $BODY$
+  SELECT FORMAT(
+$FUN$CREATE FUNCTION %s.%s(%s %s) RETURNS %s AS $PROP$
+  SELECT %s;
+$PROP$ LANGUAGE SQL IMMUTABLE;$FUN$
+  	,sch, name, self, partype, rettype, expr);
+$BODY$ LANGUAGE SQL IMMUTABLE;
+--select Prop('as', 'prop', 'INT', 'BOOL', 'self IS NULL');
+
+
+
+-- CREATE TYPE Validation_T AS (
+--   name Ident,
+--   expr TEXT
+-- );
+-- CREATE DOMAIN Validation AS Validation_T
+--   CONSTRAINT notempty CHECK(
+--     (VALUE).name.notempty AND
+--     (VALUE).expr.notempty);
+-- CREATE FUNCTION Validation(
+--   name Ident,
+--   expr TEXT,
+--   VARIADIC params ExprParam[] DEFAULT '{}'
+-- ) RETURNS Validation AS $BODY$
+--   SELECT ROW(name, depar(expr, VARIADIC params))::Validation;
+-- $BODY$ LANGUAGE SQL IMMUTABLE;
+-- CREATE FUNCTION Validation(
+--   v Validation,
+--   VARIADIC params ExprParam[] DEFAULT '{}' 
+-- ) RETURNS Validation AS $BODY$
+--   SELECT ROW(v.name, depar(v.expr, VARIADIC params))::Validation;
+-- $BODY$ LANGUAGE SQL IMMUTABLE;
+
+-- CREATE TABLE validations OF Validation_T;
+
+-- CREATE PROCEDURE def_validations(
+--   VARIADIC varr Validation[]
+-- ) AS $BODY$
+-- BEGIN
+--   INSERT INTO validations(name, expr)
+--   SELECT * FROM UNNEST(varr);
+-- END
+-- $BODY$ LANGUAGE PLPGSQL;
