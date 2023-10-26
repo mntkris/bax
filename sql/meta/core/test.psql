@@ -1,7 +1,9 @@
 \set QUIET on
 \set VERBOSITY terse
 
+SET client_min_messages TO ERROR;
 \include_relative install.psql
+SET client_min_messages TO DEFAULT;
 
 \include_relative tests/testutils.psql
-\include_relative tests/unit/test01.psql
+\include_relative tests/unit/ddlcreate.psql

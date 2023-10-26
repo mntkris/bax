@@ -106,13 +106,16 @@ CREATE FUNCTION ddlcreate(tpe types) RETURNS TEXT AS $BODY$
 #variable_conflict use_variable
 DECLARE
   fields TEXT;
+  qname TEXT;
 BEGIN
   SELECT STRING_AGG((f).ddlcreate, E',\n' ORDER BY f.id) INTO fields
   FROM ddlfields f WHERE f.parenttype = tpe.name;
- 
+
+  qname = (tpe.ns).astext || tpe.name;
   IF tpe.kind = 'composite' THEN
-    RETURN FORMAT(E'CREATE TYPE %s%s AS (\n%s\n);', 
-                  (tpe.ns).astext, tpe.name, fields);
+    RETURN FORMAT(
+      E'CREATE TYPE %s_T AS (\n%s\n);\nCREATE DOMAIN %s AS %s_T;', 
+      qname, fields, qname, qname);
   END IF;
   IF tpe.kind = 'table' THEN
     RETURN FORMAT(E'CREATE TABLE %s%s (\n%s\n);',
@@ -123,14 +126,19 @@ $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 --select (t).ddlcreate from compositetypes t order by serial;
 
 
-CREATE FUNCTION ddlcreate() RETURNS TEXT AS $BODY$
+CREATE FUNCTION ddlcreatescalartypes() RETURNS TEXT AS $BODY$
 #variable_conflict use_variable
-DECLARE
-  scalars TEXT;
 BEGIN
-  SELECT STRING_AGG((s).ddlcreate, E'\n' ORDER BY s.serial) INTO scalars
+  RETURN STRING_AGG((s).ddlcreate, E'\n\n' ORDER BY s.serial)
   FROM scalartypes s;
+END
+$BODY$ LANGUAGE PLPGSQL;
 
-  RETURN scalars;
+CREATE FUNCTION ddlcreatecompositetypes() RETURNS TEXT AS $BODY$
+#variable_conflict use_variable
+BEGIN
+  CALL fillddlfields();
+  RETURN STRING_AGG((c).ddlcreate, E'\n\n' ORDER BY c.serial)
+  FROM compositetypes c;
 END
 $BODY$ LANGUAGE PLPGSQL;
