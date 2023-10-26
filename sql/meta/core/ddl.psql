@@ -78,10 +78,24 @@ CREATE FUNCTION astext(ns Namespace) RETURNS TEXT AS $BODY$
 $BODY$ LANGUAGE SQL IMMUTABLE;
 --select (('aa-bb-cc').arr).astext;
 
+CREATE FUNCTION schema(ns Namespace) RETURNS TEXT AS $BODY$
+  SELECT CASE CARDINALITY(ns)
+    WHEN 0 THEN ''
+    ELSE ns[1] || '.'
+  END;
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION ddlcreate(scalar scalartypes) RETURNS TEXT AS $BODY$
+#variable_conflict use_variable
+BEGIN
+  RETURN FORMAT(
+    $DDL$CREATE DOMAIN %s%s AS %s;$DDL$,
+    (scalar.ns).astext, scalar.name, scalar.pgtype);
+END
+$BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 
 CREATE FUNCTION ddlcreate(field ddlfields) RETURNS TEXT AS $BODY$
 #variable_conflict use_variable
-DECLARE
 BEGIN
   RETURN FORMAT($DDL$  %s %s$DDL$, field.name, field.type);
 END
@@ -107,3 +121,16 @@ BEGIN
 END
 $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 --select (t).ddlcreate from compositetypes t order by serial;
+
+
+CREATE FUNCTION ddlcreate() RETURNS TEXT AS $BODY$
+#variable_conflict use_variable
+DECLARE
+  scalars TEXT;
+BEGIN
+  SELECT STRING_AGG((s).ddlcreate, E'\n' ORDER BY s.serial) INTO scalars
+  FROM scalartypes s;
+
+  RETURN scalars;
+END
+$BODY$ LANGUAGE PLPGSQL;

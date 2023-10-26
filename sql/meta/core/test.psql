@@ -1,0 +1,7 @@
+\set QUIET on
+\set VERBOSITY terse
+
+\include_relative install.psql
+
+\include_relative tests/testutils.psql
+\include_relative tests/unit/test01.psql

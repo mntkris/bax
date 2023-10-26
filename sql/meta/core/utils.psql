@@ -10,7 +10,7 @@ CREATE DOMAIN PgType TEXT;
 CREATE DOMAIN Type TEXT;
 
 CREATE FUNCTION arr(s TEXT) RETURNS Namespace AS $BODY$
-  SELECT STRING_TO_ARRAY(REPLACE(REPLACE(s,'-',','), ' ',''), ',');
+  SELECT STRING_TO_ARRAY(REPLACE(REPLACE(REPLACE(s, '_', ','), '-', ','), ' ',''), ',');
 $BODY$ LANGUAGE SQL IMMUTABLE STRICT;
 -- select ('11-22-33').arr;
 
@@ -67,3 +67,5 @@ BEGIN
 END
 $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 --select depar('@@1111@@ sdcm,hsdfjksdf @@3333@@', ExprParam('@@1111@@', 'AAAA'), ExprParam('@@3333@@', 'BBBBB'));
+
+

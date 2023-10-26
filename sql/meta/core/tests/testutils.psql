@@ -1,0 +1,4 @@
+CREATE FUNCTION equals(t1 TEXT, t2 TEXT) RETURNS BOOL AS $BODY$
+  SELECT REGEXP_REPLACE(t1, '\s+', '', 'g') = REGEXP_REPLACE(t2, '\s+', '', 'g');
+$BODY$ LANGUAGE SQL IMMUTABLE;
+--select regexp_replace(E'1\t1\n122 22', '\s+', '', 'g');

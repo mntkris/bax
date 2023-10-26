@@ -1,9 +1,38 @@
--- TODO dokonczyc
 CREATE TYPE Prop_T AS (
-  x INT
+  -- sch from type/field definition
+  -- partype also
+  name Ident,
+  rettype Type,
+  expr TEXT,
+  self Ident,
+  stored BOOL,
+  indexed BOOL,
+  isunique BOOL
 );
-CREATE DOMAIN Prop AS Prop_T;
+CREATE DOMAIN Prop AS Prop_T
+  CONSTRAINT notempty CHECK (
+    (VALUE).name.notempty AND
+    (VALUE).rettype.notempty AND
+    (VALUE).expr.notempty AND
+    (VALUE).self.notempty);
+CREATE FUNCTION Prop(
+  name Ident,
+  rettype Type,
+  expr TEXT,
+  self Ident DEFAULT 'self',
+  stored BOOL DEFAULT FALSE,  -- if not stored and indexed then index on function prop
+  indexed BOOL DEFAULT FALSE,
+  isunique BOOL DEFAULT FALSE
+) RETURNS Prop AS $BODY$
+  SELECT ROW(name, rettype, expr, self, stored, indexed, isunique)::Prop;
+$BODY$ LANGUAGE SQL IMMUTABLE;
 
+
+CREATE TYPE Validation_T AS (
+  propname Ident,
+  message TEXT
+);
+CREATE DOMAIN Validation AS Validation_T;
 
 
 CREATE TYPE TypeKind AS ENUM ('scalar', 'enum', 'composite', 'table');
@@ -56,7 +85,7 @@ CREATE TABLE fields(
   indexed BOOL NOT NULL DEFAULT FALSE,
   isunique BOOL NOT NULL DEFAULT FALSE,
   props Prop[] NOT NULL DEFAULT '{}',
-  validations Ident[] NOT NULL DEFAULT '{}',
+  validations Validation[] NOT NULL DEFAULT '{}',
   description Description
 );
 
@@ -69,7 +98,7 @@ CREATE TABLE scalarfields(
 CREATE TABLE compositefields(
   kind FieldKind NOT NULL DEFAULT 'composite',
   type Type NOT NULL REFERENCES compositetypes(name),
-  inlineprefix TEXT, -- gdy false to nie rozwijane
+  inlineprefix TEXT, -- if NULL then not expanded
   UNIQUE (ownertype, id)
 ) INHERITS (fields);
 
@@ -156,7 +185,7 @@ CREATE TYPE Field_T AS (
   indexed BOOL,
   isunique BOOL,
   props Prop[],
-  validations Ident[],
+  validations Validation[],
   description Description,
   scalarext ScalarExt,
   compositeext CompositeExt,
@@ -183,7 +212,7 @@ CREATE FUNCTION Field (
   indexed BOOL DEFAULT FALSE,
   isunique BOOL DEFAULT FALSE,
   props Prop[] DEFAULT '{}',
-  validations Ident[] DEFAULT '{}',
+  validations Validation[] DEFAULT '{}',
   description Description DEFAULT NULL,
   scalarext ScalarExt DEFAULT NULL,
   compositeext CompositeExt DEFAULT NULL,
@@ -204,7 +233,7 @@ CREATE FUNCTION Scalar(
   indexed BOOL DEFAULT FALSE,
   isunique BOOL DEFAULT FALSE,
   props Prop[] DEFAULT '{}',
-  validations Ident[] DEFAULT '{}',
+  validations Validation[] DEFAULT '{}',
   description Description DEFAULT NULL
 ) RETURNS Field AS $BODY$
   SELECT Field(
@@ -220,7 +249,7 @@ CREATE FUNCTION Composite(
   indexed BOOL DEFAULT FALSE,
   isunique BOOL DEFAULT FALSE,
   props Prop[] DEFAULT '{}',
-  validations Ident[] DEFAULT '{}',
+  validations Validation[] DEFAULT '{}',
   description Description DEFAULT NULL
 ) RETURNS Field AS $BODY$
   SELECT Field(
@@ -236,7 +265,7 @@ CREATE FUNCTION Inline(
   indexed BOOL DEFAULT FALSE,
   isunique BOOL DEFAULT FALSE,
   props Prop[] DEFAULT '{}',
-  validations Ident[] DEFAULT '{}',
+  validations Validation[] DEFAULT '{}',
   description Description DEFAULT NULL
 ) RETURNS Field AS $BODY$
   SELECT Field(
@@ -249,14 +278,13 @@ CREATE FUNCTION RefN(
   destination Ident,
   cascade BOOL DEFAULT FALSE,
   names Text DEFAULT NULL,
-  notempty BOOL DEFAULT FALSE,
+  notempty BOOL DEFAULT TRUE,
   indexed BOOL DEFAULT FALSE,
-  isunique BOOL DEFAULT FALSE,
   props Prop[] DEFAULT '{}',
-  validations Ident[] DEFAULT '{}',
+  validations Validation[] DEFAULT '{}',
   description Description DEFAULT NULL
 ) RETURNS Field AS $BODY$
-  SELECT Field(id, 'refn_' || id, notempty, indexed, isunique, props, validations, description,
+  SELECT Field(id, 'refn_' || id, notempty, indexed, FALSE, props, validations, description,
   refnext => RefNExt(destination => destination, cascade => cascade, names => names.arr));
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
@@ -265,15 +293,14 @@ CREATE FUNCTION Ref1(
   destination Ident,
   cascade BOOL DEFAULT FALSE,
   names Text DEFAULT NULL,
-  notempty BOOL DEFAULT FALSE,
+  notempty BOOL DEFAULT TRUE,
   indexed BOOL DEFAULT FALSE,
-  isunique BOOL DEFAULT FALSE,
   props Prop[] DEFAULT '{}',
-  validations Ident[] DEFAULT '{}',
+  validations Validation[] DEFAULT '{}',
   description Description DEFAULT NULL
 ) RETURNS Field AS $BODY$
   SELECT Field(
-    id, 'ref1_' || id, notempty, indexed, isunique, props, validations, description,
+    id, 'ref1_' || id, notempty, indexed, TRUE, props, validations, description,
     ref1ext => Ref1Ext(destination => destination, cascade => cascade, names => names.arr));
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
@@ -407,12 +434,12 @@ END
 $BODY$ LANGUAGE PLPGSQL;
 
 
-set search_path to meta;
+--set search_path to meta;
 CREATE FUNCTION Prop(
   sch Ident,
   name Ident,
   partype Type,
-  rettype TYPE,
+  rettype Type,
   expr TEXT,
   self Ident DEFAULT 'self'
 ) RETURNS TEXT AS $BODY$
@@ -424,6 +451,10 @@ $PROP$ LANGUAGE SQL IMMUTABLE;$FUN$
 $BODY$ LANGUAGE SQL IMMUTABLE;
 --select Prop('as', 'prop', 'INT', 'BOOL', 'self IS NULL');
 
+CREATE TABLE ConstraintMessages(
+  name Ident PRIMARY KEY,
+  message TEXT
+);
 
 
 -- CREATE TYPE Validation_T AS (
