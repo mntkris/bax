@@ -20,9 +20,9 @@ CREATE FUNCTION Prop(
   rettype Type,
   expr TEXT,
   self Ident DEFAULT 'self',
-  stored BOOL DEFAULT FALSE,  -- if not stored and indexed then index on function prop
-  indexed BOOL DEFAULT FALSE,
-  isunique BOOL DEFAULT FALSE
+  stored BOOL DEFAULT FALSE,  -- ????
+  indexed BOOL DEFAULT FALSE, -- ????
+  isunique BOOL DEFAULT FALSE -- ????
 ) RETURNS Prop AS $BODY$
   SELECT ROW(name, rettype, expr, self, stored, indexed, isunique)::Prop;
 $BODY$ LANGUAGE SQL IMMUTABLE;
@@ -41,18 +41,25 @@ CREATE TABLE types (
   serial SERIAL,
   kind TypeKind NOT NULL,
   ns Namespace,
-  name Ident PRIMARY KEY
+  name Ident PRIMARY KEY,
+  initial Initial DEFAULT NULL,
+  notempty BOOL NOT NULL DEFAULT FALSE,
+  props Prop[] NOT NULL DEFAULT '{}',
+  validations Validation[] NOT NULL DEFAULT '{}'
 );
 
 CREATE TABLE scalartypes (
   kind TypeKind NOT NULL DEFAULT 'scalar',
   name Ident PRIMARY KEY,
-  pgtype PgType NOT NULL
+  pgtype PgType NOT NULL,
+  indexed BOOL NOT NULL DEFAULT FALSE,
+  isunique BOOL NOT NULL DEFAULT FALSE
 ) INHERITS (types);
 
 CREATE TABLE enumtypes (
   kind TypeKind NOT NULL DEFAULT 'enum',
   values TEXT[]
+  -- TODO
 ) INHERITS (scalartypes);
 
 -- todo range
@@ -81,9 +88,8 @@ CREATE TABLE fields(
   ownertype Ident NOT NULL REFERENCES compositetypes(name),
   id INT NOT NULL CHECK (id BETWEEN 100 AND 999),
   name Ident NOT NULL,
+  initial Initial DEFAULT NULL,
   notempty BOOL NOT NULL DEFAULT FALSE,
-  indexed BOOL NOT NULL DEFAULT FALSE,
-  isunique BOOL NOT NULL DEFAULT FALSE,
   props Prop[] NOT NULL DEFAULT '{}',
   validations Validation[] NOT NULL DEFAULT '{}',
   description Description
@@ -92,6 +98,8 @@ CREATE TABLE fields(
 CREATE TABLE scalarfields(
   kind FieldKind NOT NULL DEFAULT 'scalar',
   type Type NOT NULL REFERENCES scalartypes(name),
+  indexed BOOL NOT NULL DEFAULT FALSE,
+  isunique BOOL NOT NULL DEFAULT FALSE,
   UNIQUE (ownertype, id)
 ) INHERITS (fields);
 
@@ -124,7 +132,9 @@ CREATE DOMAIN ScalarExt AS ScalarExt_T
   CONSTRAINT notempty CHECK (
     (VALUE).type.notempty);
 CREATE FUNCTION ScalarExt (
-  type Type
+  type Type,
+  indexed BOOL DEFAULT FALSE,
+  isunique BOOL DEFAULT FALSE
 ) RETURNS ScalarExt AS $BODY$
   SELECT ROW(type)::ScalarExt;
 $BODY$ LANGUAGE SQL IMMUTABLE;
@@ -181,6 +191,7 @@ $BODY$ LANGUAGE SQL IMMUTABLE;
 CREATE TYPE Field_T AS (
   id INT,
   name Ident,
+  initial Initial,
   notempty BOOL,
   indexed BOOL,
   isunique BOOL,
@@ -208,6 +219,7 @@ CREATE DOMAIN Field AS Field_T
 CREATE FUNCTION Field (
   id INT,
   name Ident,
+  initial Initial DEFAULT NULL,
   notempty BOOL DEFAULT FALSE,
   indexed BOOL DEFAULT FALSE,
   isunique BOOL DEFAULT FALSE,
@@ -220,7 +232,7 @@ CREATE FUNCTION Field (
   ref1ext Ref1Ext DEFAULT NULL
 ) RETURNS Field AS $BODY$
   SELECT (
-    id, name, notempty, indexed, isunique, props, validations, 
+    id, name, initial, notempty, indexed, isunique, props, validations, 
     description, scalarext, compositeext, refnext, ref1ext
   )::Field;
 $BODY$ LANGUAGE SQL IMMUTABLE;
@@ -229,6 +241,7 @@ CREATE FUNCTION Scalar(
   id INT,
   name Ident,
   type Type,
+  initial Initial DEFAULT NULL,
   notempty BOOL DEFAULT FALSE,
   indexed BOOL DEFAULT FALSE,
   isunique BOOL DEFAULT FALSE,
@@ -237,14 +250,15 @@ CREATE FUNCTION Scalar(
   description Description DEFAULT NULL
 ) RETURNS Field AS $BODY$
   SELECT Field(
-    id, name, notempty, indexed, isunique, props, validations, description,
-    scalarext => ScalarExt(type => type));
+    id, name, initial, notempty, indexed, isunique, props, validations,
+    description, scalarext => ScalarExt(type => type));
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
 CREATE FUNCTION Composite(
   id INT,
   name Ident,
   type Type,
+  initial Initial DEFAULT NULL,
   notempty BOOL DEFAULT FALSE,
   indexed BOOL DEFAULT FALSE,
   isunique BOOL DEFAULT FALSE,
@@ -253,7 +267,7 @@ CREATE FUNCTION Composite(
   description Description DEFAULT NULL
 ) RETURNS Field AS $BODY$
   SELECT Field(
-    id, name, notempty, indexed, isunique, props, validations, description,
+    id, name, initial, notempty, indexed, isunique, props, validations, description,
     compositeext => CompositeExt(type => type));
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
@@ -261,6 +275,7 @@ CREATE FUNCTION Inline(
   id INT,
   type Type,
   prefix TEXT DEFAULT NULL,
+  initial Initial DEFAULT NULL,
   notempty BOOL DEFAULT FALSE,
   indexed BOOL DEFAULT FALSE,
   isunique BOOL DEFAULT FALSE,
@@ -269,7 +284,7 @@ CREATE FUNCTION Inline(
   description Description DEFAULT NULL
 ) RETURNS Field AS $BODY$
   SELECT Field(
-    id, 'inline_' || id, notempty, indexed, isunique, props, validations, description,
+    id, 'inline_' || id, initial, notempty, indexed, isunique, props, validations, description,
     compositeext => CompositeExt(type => type, inlineprefix => prefix));
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
@@ -278,13 +293,14 @@ CREATE FUNCTION RefN(
   destination Ident,
   cascade BOOL DEFAULT FALSE,
   names Text DEFAULT NULL,
+  initial Initial DEFAULT NULL,
   notempty BOOL DEFAULT TRUE,
   indexed BOOL DEFAULT FALSE,
   props Prop[] DEFAULT '{}',
   validations Validation[] DEFAULT '{}',
   description Description DEFAULT NULL
 ) RETURNS Field AS $BODY$
-  SELECT Field(id, 'refn_' || id, notempty, indexed, FALSE, props, validations, description,
+  SELECT Field(id, 'refn_' || id, initial, notempty, indexed, FALSE, props, validations, description,
   refnext => RefNExt(destination => destination, cascade => cascade, names => names.arr));
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
@@ -293,6 +309,7 @@ CREATE FUNCTION Ref1(
   destination Ident,
   cascade BOOL DEFAULT FALSE,
   names Text DEFAULT NULL,
+  initial Initial DEFAULT NULL,
   notempty BOOL DEFAULT TRUE,
   indexed BOOL DEFAULT FALSE,
   props Prop[] DEFAULT '{}',
@@ -300,8 +317,12 @@ CREATE FUNCTION Ref1(
   description Description DEFAULT NULL
 ) RETURNS Field AS $BODY$
   SELECT Field(
-    id, 'ref1_' || id, notempty, indexed, TRUE, props, validations, description,
+    id, 'ref1_' || id, initial, notempty, indexed, TRUE, props, validations, description,
     ref1ext => Ref1Ext(destination => destination, cascade => cascade, names => names.arr));
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION fields(VARIADIC fieldsarr Field[]) RETURNS Field[] AS $BODY$
+  SELECT fieldsarr;
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
 -- ===================================================
@@ -309,7 +330,11 @@ $BODY$ LANGUAGE SQL IMMUTABLE;
 CREATE TYPE ScalarType_T AS (
   ns Namespace,
   name Ident,
-  pgtype PgType
+  pgtype PgType,
+  initial Initial,
+  notempty BOOL,
+  props Prop[],
+  validations Validation[]
 );
 CREATE DOMAIN ScalarType AS ScalarType_T
   CONSTRAINT notempty CHECK (
@@ -319,16 +344,21 @@ CREATE DOMAIN ScalarType AS ScalarType_T
 CREATE FUNCTION ScalarType (
   ns TEXT,
   name Ident,
-  pgtype PgType
+  pgtype PgType,
+  initial Initial DEFAULT NULL,
+  notempty BOOL DEFAULT FALSE,
+  props Prop[] DEFAULT '{}',
+  validations Validation[] DEFAULT '{}'
 ) RETURNS ScalarType AS $BODY$
-  SELECT ROW(ns.arr, name, pgtype)::ScalarType
+  SELECT ROW(ns.arr, name, pgtype, initial, notempty, props, validations)::ScalarType
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
 CREATE PROCEDURE def_scalartypes(VARIADIC sts ScalarType[]) AS $BODY$
 #variable_conflict use_variable
 BEGIN
-  INSERT INTO scalartypes(ns, name, pgtype)
-  SELECT st.ns, st.name, st.pgtype FROM UNNEST(sts) st;
+  INSERT INTO scalartypes(ns, name, pgtype, initial, notempty, props, validations)
+  SELECT st.ns, st.name, st.pgtype, st.initial, st.notempty, st.props, st.validations
+  FROM UNNEST(sts) st;
 END
 $BODY$ LANGUAGE PLPGSQL;
 
@@ -337,7 +367,11 @@ $BODY$ LANGUAGE PLPGSQL;
 CREATE TYPE CompositeType_T AS (
   ns Namespace,
   name Ident,
-  fields Field[]
+  fields Field[],
+  initial Initial,
+  notempty BOOL,
+  props Prop[],
+  validations Validation[]
 );
 CREATE DOMAIN CompositeType AS CompositeType_T
   CONSTRAINT notempty CHECK (
@@ -347,17 +381,21 @@ CREATE DOMAIN CompositeType AS CompositeType_T
 CREATE FUNCTION CompositeType (
   ns TEXT,
   name Ident,
-  VARIADIC fields Field[]
+  fields Field[],
+  initial Initial DEFAULT NULL,
+  notempty BOOL DEFAULT FALSE,
+  props Prop[] DEFAULT '{}',
+  validations Validation[] DEFAULT '{}'
 ) RETURNS CompositeType AS $BODY$
-  SELECT (ns.arr, name, fields)::CompositeType;
+  SELECT (ns.arr, name, fields, initial, notempty, props, validations)::CompositeType;
 $BODY$ LANGUAGE SQL IMMUTABLE;
-
 
 CREATE PROCEDURE def_compositetypes(VARIADIC cts CompositeType[]) AS $BODY$
 #variable_conflict use_variable
 BEGIN
-  INSERT INTO compositetypes(ns, name)
-  SELECT ct.ns, ct.name FROM UNNEST(cts) ct;
+  INSERT INTO compositetypes(ns, name, initial, notempty, props, validations)
+  SELECT ct.ns, ct.name, ct.initial, ct.notempty, ct.props, ct.validations
+  FROM UNNEST(cts) ct;
 
   INSERT INTO scalarfields(
     ownertype, id, name, notempty, indexed, isunique, props, validations, description, type)
@@ -366,8 +404,8 @@ BEGIN
   FROM UNNEST(cts) ct, UNNEST(ct.fields) f WHERE (f.scalarext).notnull;
 
   INSERT INTO compositefields(
-    ownertype, id, name, notempty, indexed, isunique, props, validations, description, type, inlineprefix)
-  SELECT ct.name, f.id, f.name, f.notempty, f.indexed, f.isunique, f.props, f.validations, f.description, 
+    ownertype, id, name, notempty, props, validations, description, type, inlineprefix)
+  SELECT ct.name, f.id, f.name, f.notempty, f.props, f.validations, f.description, 
     (f.compositeext).type, (f.compositeext).inlineprefix 
   FROM UNNEST(cts) ct, UNNEST(ct.fields) f WHERE (f.compositeext).notnull;
 
@@ -434,58 +472,7 @@ END
 $BODY$ LANGUAGE PLPGSQL;
 
 
---set search_path to meta;
-CREATE FUNCTION Prop(
-  sch Ident,
-  name Ident,
-  partype Type,
-  rettype Type,
-  expr TEXT,
-  self Ident DEFAULT 'self'
-) RETURNS TEXT AS $BODY$
-  SELECT FORMAT(
-$FUN$CREATE FUNCTION %s.%s(%s %s) RETURNS %s AS $PROP$
-  SELECT %s;
-$PROP$ LANGUAGE SQL IMMUTABLE;$FUN$
-  	,sch, name, self, partype, rettype, expr);
-$BODY$ LANGUAGE SQL IMMUTABLE;
---select Prop('as', 'prop', 'INT', 'BOOL', 'self IS NULL');
-
-CREATE TABLE ConstraintMessages(
-  name Ident PRIMARY KEY,
-  message TEXT
-);
-
-
--- CREATE TYPE Validation_T AS (
---   name Ident,
---   expr TEXT
+-- CREATE TABLE ConstraintMessages(
+--   name Ident PRIMARY KEY,
+--   message TEXT
 -- );
--- CREATE DOMAIN Validation AS Validation_T
---   CONSTRAINT notempty CHECK(
---     (VALUE).name.notempty AND
---     (VALUE).expr.notempty);
--- CREATE FUNCTION Validation(
---   name Ident,
---   expr TEXT,
---   VARIADIC params ExprParam[] DEFAULT '{}'
--- ) RETURNS Validation AS $BODY$
---   SELECT ROW(name, depar(expr, VARIADIC params))::Validation;
--- $BODY$ LANGUAGE SQL IMMUTABLE;
--- CREATE FUNCTION Validation(
---   v Validation,
---   VARIADIC params ExprParam[] DEFAULT '{}' 
--- ) RETURNS Validation AS $BODY$
---   SELECT ROW(v.name, depar(v.expr, VARIADIC params))::Validation;
--- $BODY$ LANGUAGE SQL IMMUTABLE;
-
--- CREATE TABLE validations OF Validation_T;
-
--- CREATE PROCEDURE def_validations(
---   VARIADIC varr Validation[]
--- ) AS $BODY$
--- BEGIN
---   INSERT INTO validations(name, expr)
---   SELECT * FROM UNNEST(varr);
--- END
--- $BODY$ LANGUAGE PLPGSQL;

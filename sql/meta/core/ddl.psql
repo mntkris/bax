@@ -9,10 +9,18 @@ CREATE TABLE ddlfields (
   id TEXT,
   name Ident,
   type Type,
+  -- ---------------------------
   ispk BOOL DEFAULT FALSE,
   desttable Ident DEFAULT NULL,
   destfield Ident DEFAULT NULL,
   cascade BOOL DEFAULT NULL,
+  -- ---------------------------
+  notempty BOOL NOT NULL DEFAULT FALSE,
+  indexed BOOL NOT NULL DEFAULT FALSE,
+  isunique BOOL NOT NULL DEFAULT FALSE,
+  props Prop[] NOT NULL DEFAULT '{}',
+  validations Validation[] NOT NULL DEFAULT '{}',
+  -- ---------------------------
   UNIQUE (parenttype, id),
   PRIMARY KEY (parenttype, name)
 );
@@ -24,7 +32,8 @@ DECLARE
 BEGIN
   FOR tpe IN SELECT * FROM compositetypes ORDER BY serial LOOP
 	
-    INSERT INTO ddlfields(kind, parenttype, id, name, type, ispk)
+    INSERT INTO ddlfields(
+      kind, parenttype, id, name, type, ispk) --notempty
     SELECT sf.kind, sf.ownertype, sf.id::TEXT, sf.name, sf.type, 
       COALESCE(tpe.kind = 'table' AND sf.name=ANY(t.pk), FALSE)
     FROM scalarfields sf
@@ -85,6 +94,8 @@ CREATE FUNCTION schema(ns Namespace) RETURNS TEXT AS $BODY$
   END;
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
+-- =================================================================
+
 CREATE FUNCTION ddlcreate(scalar scalartypes) RETURNS TEXT AS $BODY$
 #variable_conflict use_variable
 BEGIN
@@ -94,6 +105,15 @@ BEGIN
 END
 $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 
+CREATE FUNCTION ddlcreatescalartypes() RETURNS TEXT AS $BODY$
+#variable_conflict use_variable
+BEGIN
+  RETURN STRING_AGG((s).ddlcreate, E'\n\n' ORDER BY s.serial)
+  FROM scalartypes s;
+END
+$BODY$ LANGUAGE PLPGSQL;
+
+
 CREATE FUNCTION ddlcreate(field ddlfields) RETURNS TEXT AS $BODY$
 #variable_conflict use_variable
 BEGIN
@@ -102,37 +122,27 @@ END
 $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 --select (f).ddlcreate from ddlfields f;
 
-CREATE FUNCTION ddlcreate(tpe types) RETURNS TEXT AS $BODY$
+CREATE FUNCTION ddlcreate(cmp compositetypes) RETURNS TEXT AS $BODY$
 #variable_conflict use_variable
 DECLARE
   fields TEXT;
   qname TEXT;
 BEGIN
   SELECT STRING_AGG((f).ddlcreate, E',\n' ORDER BY f.id) INTO fields
-  FROM ddlfields f WHERE f.parenttype = tpe.name;
+  FROM ddlfields f WHERE f.parenttype = cmp.name;
 
-  qname = (tpe.ns).astext || tpe.name;
-  IF tpe.kind = 'composite' THEN
-    RETURN FORMAT(
-      E'CREATE TYPE %s_T AS (\n%s\n);\nCREATE DOMAIN %s AS %s_T;', 
-      qname, fields, qname, qname);
-  END IF;
-  IF tpe.kind = 'table' THEN
-    RETURN FORMAT(E'CREATE TABLE %s%s (\n%s\n);',
-                  (tpe.ns).astext, tpe.name, fields);
-  END IF;
+  qname = (cmp.ns).astext || cmp.name;
+  -- IF tpe.kind = 'composite' THEN
+  RETURN FORMAT(
+    E'CREATE TYPE %s_T AS (\n%s\n);\nCREATE DOMAIN %s AS %s_T;', 
+    qname, fields, qname, qname);
+  -- END IF;
+  -- IF tpe.kind = 'table' THEN
+  --   RETURN FORMAT(E'CREATE TABLE %s%s (\n%s\n);',
+  --                 (tpe.ns).astext, tpe.name, fields);
+  -- END IF;
 END
 $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
---select (t).ddlcreate from compositetypes t order by serial;
-
-
-CREATE FUNCTION ddlcreatescalartypes() RETURNS TEXT AS $BODY$
-#variable_conflict use_variable
-BEGIN
-  RETURN STRING_AGG((s).ddlcreate, E'\n\n' ORDER BY s.serial)
-  FROM scalartypes s;
-END
-$BODY$ LANGUAGE PLPGSQL;
 
 CREATE FUNCTION ddlcreatecompositetypes() RETURNS TEXT AS $BODY$
 #variable_conflict use_variable
@@ -142,3 +152,65 @@ BEGIN
   FROM compositetypes c;
 END
 $BODY$ LANGUAGE PLPGSQL;
+
+-- TODO tables
+
+-- ==================================================================
+
+CREATE FUNCTION propsql(
+  sch Ident,
+  name Ident,
+  partype Type,
+  rettype Type,
+  expr TEXT,
+  self Ident DEFAULT 'self'
+) RETURNS TEXT AS $BODY$
+  SELECT FORMAT(
+$FUN$CREATE FUNCTION %s%s(%s %s) RETURNS %s AS $PROP$
+  SELECT %s;
+$PROP$ LANGUAGE SQL IMMUTABLE;$FUN$,
+  	sch, name, self, partype, rettype, expr);
+$BODY$ LANGUAGE SQL IMMUTABLE;
+--select Prop('as', 'prop', 'INT', 'BOOL', 'self IS NULL');
+
+CREATE FUNCTION ddlprops(scalar scalartypes) RETURNS TEXT AS $BODY$
+#variable_conflict use_variable
+BEGIN
+  RETURN STRING_AGG(
+    propsql((scalar.ns).schema, prop.name, scalar.name, prop.rettype, prop.expr), E'\n')
+  FROM UNNEST(scalar.props) prop;
+END
+$BODY$ LANGUAGE PLPGSQL IMMUTABLE;
+
+CREATE FUNCTION ddlscalartypesprops() RETURNS TEXT AS $BODY$
+#variable_conflict use_variable
+BEGIN
+  RETURN STRING_AGG((s).ddlprops, E'\n\n' ORDER BY s.serial)
+  FROM scalartypes s;
+END
+$BODY$ LANGUAGE PLPGSQL IMMUTABLE;
+
+-- ==================================================================
+
+CREATE FUNCTION ddldefault(scalar scalartypes) RETURNS TEXT AS $BODY$
+#variable_conflict use_variable
+BEGIN
+  RETURN FORMAT(
+    $DDL$ALTER DOMAIN %s%s SET DEFAULT %s;$DDL$,
+    (scalar.ns).schema, scalar.name, scalar.initial);
+END
+$BODY$ LANGUAGE PLPGSQL IMMUTABLE;
+
+
+CREATE FUNCTION ddlscalartypesdefaults() RETURNS TEXT AS $BODY$
+#variable_conflict use_variable
+BEGIN
+  RETURN STRING_AGG((s).ddldefault, E'\n\n' ORDER BY s.serial)
+  FROM scalartypes s WHERE s.initial IS NOT NULL;
+END
+$BODY$ LANGUAGE PLPGSQL IMMUTABLE;
+
+
+
+
+

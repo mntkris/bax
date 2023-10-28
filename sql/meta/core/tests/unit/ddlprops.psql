@@ -1,0 +1,15 @@
+CALL def_scalartypes(
+  ScalarType(
+    'test', 'Digits20', 'VARCHAR(20)',
+    props => ARRAY[
+      Prop('digitsonly', 'BOOL', $PROP$self  ~ '[0-9]+'$PROP$),
+      Prop('upper', 'TEXT', $PROP$UPPER(self)$PROP$)
+    ]),
+  ScalarType('test', 'Number', 'INT',
+    props => ARRAY[
+      Prop('lower', 'TEXT', $PROP$LOWER(self)$PROP$)  
+    ])
+);
+
+
+select ddlscalartypesprops();

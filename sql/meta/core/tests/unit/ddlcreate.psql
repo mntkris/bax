@@ -26,18 +26,24 @@ CALL def_scalartypes(
   ScalarType('test', 'Number', 'INT')
 );
 CALL def_compositetypes(
-  CompositeType('test', 'Compo1',
-    Scalar(105, 'txt1', 'Text'),
-    Scalar(110, 'num1', 'Number')
+  CompositeType(
+    'test', 'Compo1',
+    fields(
+      Scalar(105, 'txt1', 'Text'),
+      Scalar(110, 'num1', 'Number'))
   ),
-  CompositeType('test', 'Compo21',
-    Scalar(105, 'txt1', 'Text'),
-    Composite(110, 'compo1', 'Compo1')
+  CompositeType(
+    'test', 'Compo21',
+    fields(
+      Scalar(105, 'txt1', 'Text'),
+      Composite(110, 'compo1', 'Compo1'))
   ),
-  CompositeType('test', 'Compo22',
-    Scalar(105, 'num1', 'Number'),
-    Composite(110, 'compo1', 'Compo1'),
-    Inline(115, 'Compo1', prefix => 'compo1_')
+  CompositeType(
+    'test', 'Compo22',
+    fields(
+      Scalar(105, 'num1', 'Number'),
+      Composite(110, 'compo1', 'Compo1'),
+      Inline(115, 'Compo1', prefix => 'compo1_'))
   )
 );
 WITH test AS (
@@ -46,14 +52,14 @@ SELECT ddlcreatecompositetypes() AS result,
   txt1 Text,
   num1 Number
 );
-
 CREATE DOMAIN test.Compo1 AS test.Compo1_T;
+
 CREATE TYPE test.Compo21_T AS (
   txt1 Text,
   compo1 Compo1
 );
-
 CREATE DOMAIN test.Compo21 AS test.Compo21_T;
+
 CREATE TYPE test.Compo22_T AS (
   num1 Number,
   compo1 Compo1,
@@ -69,4 +75,7 @@ SELECT result, expected, not equals(result, expected) error FROM test
   \echo '--- EXPECTED --->'
   \echo :expected
 \endif
+
+select * from only compositetypes;
+
 ROLLBACK;
