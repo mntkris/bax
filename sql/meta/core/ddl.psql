@@ -15,6 +15,7 @@ CREATE TABLE ddlfields (
   destfield Ident DEFAULT NULL,
   cascade BOOL DEFAULT NULL,
   -- ---------------------------
+  initial Initial DEFAULT NULL,
   notempty BOOL NOT NULL DEFAULT FALSE,
   indexed BOOL NOT NULL DEFAULT FALSE,
   isunique BOOL NOT NULL DEFAULT FALSE,
@@ -25,6 +26,24 @@ CREATE TABLE ddlfields (
   PRIMARY KEY (parenttype, name)
 );
 
+CREATE MATERIALIZED VIEW ddlfieldsmv AS
+  SELECT f.kind, f.parenttype, f.id, f.name, f.type,
+    f.ispk, f.desttable, f.destfield, f.cascade,
+    -- ---------------------------
+    COALESCE(f.initial, t.initial) initial,
+    COALESCE(f.notempty, t.notempty) notempty,
+    COALESCE(f.indexed, s.indexed) indexed,
+    COALESCE(f.isunique, s.isunique) isunique,
+    f.props, f.validations,
+    f.initial f_initial, t.initial t_initial,
+    f.notempty f_notempty, t.notempty t_notempty,
+    f.indexed f_indexed, s.indexed s_indexed,
+    f.isunique f_isunique, s.isunique s_isunique
+  FROM ddlfields f
+  JOIN types t ON f.type = t.name
+  LEFT JOIN scalartypes s ON f.type = s.name
+  WITH NO DATA;
+
 CREATE PROCEDURE fillddlfields() AS $BODY$
 #variable_conflict use_variable
 DECLARE
@@ -33,29 +52,41 @@ BEGIN
   FOR tpe IN SELECT * FROM compositetypes ORDER BY serial LOOP
 	
     INSERT INTO ddlfields(
-      kind, parenttype, id, name, type, ispk) --notempty
+      kind, parenttype, id, name, type, ispk, initial, notempty,
+      indexed, isunique, props, validations)
     SELECT sf.kind, sf.ownertype, sf.id::TEXT, sf.name, sf.type, 
-      COALESCE(tpe.kind = 'table' AND sf.name=ANY(t.pk), FALSE)
+      COALESCE(tpe.kind = 'table' AND sf.name=ANY(t.pk), FALSE),
+      sf.initial, sf.notempty, sf.indexed, sf.isunique,
+      sf.props, sf.validations
     FROM scalarfields sf
     LEFT JOIN tables t ON t.name = sf.ownertype
     WHERE sf.ownertype = tpe.name;
 
-    INSERT INTO ddlfields(kind, parenttype, id, name, type)
-    SELECT kind, ownertype, id::TEXT, name, type
+    INSERT INTO ddlfields(
+      kind, parenttype, id, name, type,
+      initial, notempty, props, validations)
+    SELECT kind, ownertype, id::TEXT, name, type,
+      initial, notempty, props, validations
     FROM compositefields 
     WHERE ownertype = tpe.name AND inlineprefix IS NULL;
 
-    INSERT INTO ddlfields(kind, parenttype, id, name, type)
+    -- TODO lift tpe's props and validations with prefixing
+    INSERT INTO ddlfields(
+      kind, parenttype, id, name, type,
+      initial, notempty, props, validations)
     SELECT tf.kind, cf.ownertype, cf.id || '-' || tf.id, 
-      cf.inlineprefix || tf.name, tf.type
+      cf.inlineprefix || tf.name, tf.type,
+      cf.initial, cf.notempty, cf.props, cf.validations
     FROM compositefields cf
     JOIN ddlfields tf ON cf.type = tf.parenttype
     WHERE cf.ownertype = tpe.name AND cf.inlineprefix IS NOT NULL;
 
     INSERT INTO ddlfields(
-      kind, parenttype, id, name, type, desttable, destfield, cascade)
+      kind, parenttype, id, name, type, desttable, destfield, cascade,
+      initial, notempty, props, validations)
     SELECT r.kind, r.ownertype, r.id || '-' || sf.id, pkfname, sf.type, 
-      r.destination, pkfname, r.cascade
+      r.destination, pkfname, r.cascade,
+      r.initial, r.notempty, r.props, r.validations
     FROM refnfields r
     JOIN tables t ON r.destination = t.name,
     UNNEST(t.pk) pkfname
@@ -63,16 +94,21 @@ BEGIN
     WHERE r.ownertype = tpe.name AND r.names IS NULL AND sf.ownertype = t.name;
 
     INSERT INTO ddlfields(
-      kind, parenttype, id, name, type, desttable, destfield, cascade)
+      kind, parenttype, id, name, type, desttable, destfield, cascade,
+      initial, notempty, props, validations)
     SELECT r.kind, r.ownertype, r.id || '-' || sf.id, fk.newname, sf.type,
-      r.destination, fk.name, r.cascade 
+      r.destination, fk.name, r.cascade,
+      r.initial, r.notempty, r.props, r.validations
     FROM refnfields r
     JOIN tables t ON r.destination = t.name, 
     UNNEST(r.names, t.pk) AS fk(newname, name)
     JOIN scalarfields sf ON sf.name = fk.name 
     WHERE r.ownertype = tpe.name AND r.names IS NOT NULL AND sf.ownertype = t.name;
   
-  END LOOP;	
+  END LOOP;
+
+  REFRESH MATERIALIZED VIEW ddlfieldsmv;
+
 END
 $BODY$ LANGUAGE PLPGSQL;
 --call fillddlfields();
@@ -171,7 +207,6 @@ $FUN$CREATE FUNCTION %s%s(%s %s) RETURNS %s AS $PROP$
 $PROP$ LANGUAGE SQL IMMUTABLE;$FUN$,
   	sch, name, self, partype, rettype, expr);
 $BODY$ LANGUAGE SQL IMMUTABLE;
---select Prop('as', 'prop', 'INT', 'BOOL', 'self IS NULL');
 
 CREATE FUNCTION ddlprops(scalar scalartypes) RETURNS TEXT AS $BODY$
 #variable_conflict use_variable
@@ -190,6 +225,27 @@ BEGIN
 END
 $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 
+
+/*
+CREATE FUNCTION ddlconstructor(cmp CompositeType) RETURNS TEXT AS $BODY$
+DECLARE
+  fields TEXT;
+  qname TEXT;
+BEGIN
+
+
+  SELECT STRING_AGG((f).ddlcreate, E',\n' ORDER BY f.id) INTO fields
+  FROM ddlfields f WHERE f.parenttype = cmp.name;
+
+  qname = (cmp.ns).astext || cmp.name;
+
+END
+$BODY$ LANGUAGE PLPGSQL IMMUTABLE;
+*/
+
+--ddlprops
+--ddlcompositetypesprops
+-- TODO snippets : constructor etc
 -- ==================================================================
 
 CREATE FUNCTION ddldefault(scalar scalartypes) RETURNS TEXT AS $BODY$
@@ -200,7 +256,6 @@ BEGIN
     (scalar.ns).schema, scalar.name, scalar.initial);
 END
 $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
-
 
 CREATE FUNCTION ddlscalartypesdefaults() RETURNS TEXT AS $BODY$
 #variable_conflict use_variable

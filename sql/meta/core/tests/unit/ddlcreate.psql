@@ -75,7 +75,4 @@ SELECT result, expected, not equals(result, expected) error FROM test
   \echo '--- EXPECTED --->'
   \echo :expected
 \endif
-
-select * from only compositetypes;
-
 ROLLBACK;
