@@ -141,14 +141,6 @@ BEGIN
 END
 $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 
-CREATE FUNCTION ddlcreatescalartypes() RETURNS TEXT AS $BODY$
-#variable_conflict use_variable
-BEGIN
-  RETURN STRING_AGG((s).ddlcreate, E'\n\n' ORDER BY s.serial)
-  FROM scalartypes s;
-END
-$BODY$ LANGUAGE PLPGSQL;
-
 
 CREATE FUNCTION ddlcreate(field ddlfields) RETURNS TEXT AS $BODY$
 #variable_conflict use_variable
@@ -180,12 +172,21 @@ BEGIN
 END
 $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 
+
+
+CREATE FUNCTION ddlscalartypecreates() RETURNS TEXT AS $BODY$
+#variable_conflict use_variable
+BEGIN
+  RETURN STRING_AGG((s).ddlcreate, E'\n\n' ORDER BY s.serial)
+  FROM scalartypes s;
+END
+$BODY$ LANGUAGE PLPGSQL;
+
 CREATE FUNCTION ddlcreatecompositetypes() RETURNS TEXT AS $BODY$
 #variable_conflict use_variable
 BEGIN
-  CALL fillddlfields();
   RETURN STRING_AGG((c).ddlcreate, E'\n\n' ORDER BY c.serial)
-  FROM compositetypes c;
+  FROM ONLY compositetypes c;
 END
 $BODY$ LANGUAGE PLPGSQL;
 
@@ -226,26 +227,45 @@ END
 $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 
 
-/*
-CREATE FUNCTION ddlconstructor(cmp CompositeType) RETURNS TEXT AS $BODY$
+
+CREATE FUNCTION ddlconstructor(cmp compositetypes) RETURNS TEXT AS $BODY$
+#variable_conflict use_variable
 DECLARE
-  fields TEXT;
+  params TEXT;
+  attrs TEXT;
   qname TEXT;
 BEGIN
-
-
-  SELECT STRING_AGG((f).ddlcreate, E',\n' ORDER BY f.id) INTO fields
-  FROM ddlfields f WHERE f.parenttype = cmp.name;
-
+  SELECT 
+    STRING_AGG(CONCAT(
+      FORMAT($PARAM$  %s %s$PARAM$, name, type),
+      CASE WHEN (initial).notnull THEN FORMAT(' DEFAULT %s', initial) ELSE '' END),
+      E',\n' ORDER BY (initial).notempty, id),
+    STRING_AGG(name,
+      E',\n    ' ORDER BY (initial).notempty, id) INTO params, attrs
+  FROM ddlfieldsmv;
+  
   qname = (cmp.ns).astext || cmp.name;
-
+  RETURN FORMAT(
+$FUN$CREATE FUNCTION %s(
+%s
+) RETURNS %s AS $CONSTR$
+  SELECT ROW(
+    %s)::%s;
+$CONSTR$ LANGUAGE SQL IMMUTABLE;$FUN$,
+    qname, params, qname, attrs, qname);
+-- TODO snippets : constructor etc
 END
 $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
-*/
 
 --ddlprops
---ddlcompositetypesprops
--- TODO snippets : constructor etc
+
+CREATE FUNCTION ddlcompositetypesprops() RETURNS TEXT AS $BODY$
+#variable_conflict use_variable
+BEGIN
+  RETURN STRING_AGG((c).ddlconstructor, E'\n\n' ORDER BY c.serial)
+  FROM ONLY compositetypes c;
+END
+$BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 -- ==================================================================
 
 CREATE FUNCTION ddldefault(scalar scalartypes) RETURNS TEXT AS $BODY$

@@ -1,0 +1,80 @@
+\echo *** SIMPLE SCALAR ALTERS
+BEGIN;
+CALL def_scalartypes(
+  ScalarType('test', 'IntType', 'INT', initial => $INI$123$INI$),
+  ScalarType('test', 'TextType', 'TEXT', initial => $INI$'abcde'$INI$)
+);
+WITH test AS (
+SELECT ddlscalartypesdefaults() AS result,
+$EXPECTED$ALTER DOMAIN test.IntType SET DEFAULT 123;
+
+ALTER DOMAIN test.TextType SET DEFAULT 'abcde';$EXPECTED$ AS expected)
+SELECT result, expected, not equals(result, expected) error FROM test
+\gset
+\if :error
+  \echo '--- RESULT --->'
+  \echo :result
+  \echo '--- EXPECTED --->'
+  \echo :expected
+\endif
+ROLLBACK;
+
+\echo *** SIMPLE PROPS
+BEGIN;
+CALL def_scalartypes(
+  ScalarType('test', 'Text', 'TEXT'),
+  ScalarType('test', 'Number', 'INT')
+);
+CALL def_compositetypes(
+  CompositeType(
+    'test', 'Compo1',
+    fields(
+      Scalar(105, 'txt1', 'Text'),
+      Scalar(110, 'num1', 'Number'))
+  ),
+  CompositeType(
+    'test', 'Compo21',
+    fields(
+      Scalar(105, 'txt1', 'Text'),
+      Composite(110, 'compo1', 'Compo1'))
+  ),
+  CompositeType(
+    'test', 'Compo22',
+    fields(
+      Scalar(105, 'num1', 'Number'),
+      Composite(110, 'compo1', 'Compo1'),
+      Inline(115, 'Compo1', prefix => 'compo1_'))
+  )
+);
+CALL fillddlfields();
+SELECT ddlcompositetypesdefaults();
+WITH test AS (
+SELECT ddlcompositetypesprops() AS result,
+'CREATE TYPE test.Compo1_T AS (
+  txt1 Text,
+  num1 Number
+);
+CREATE DOMAIN test.Compo1 AS test.Compo1_T;
+
+CREATE TYPE test.Compo21_T AS (
+  txt1 Text,
+  compo1 Compo1
+);
+CREATE DOMAIN test.Compo21 AS test.Compo21_T;
+
+CREATE TYPE test.Compo22_T AS (
+  num1 Number,
+  compo1 Compo1,
+  compo1_txt1 Text,
+  compo1_num1 Number
+);
+CREATE DOMAIN test.Compo22 AS test.Compo22_T;' AS expected)
+SELECT result, expected, not equals(result, expected) error FROM test
+\gset
+\if :error
+  \echo '--- RESULT --->'
+  \echo :result
+  \echo '--- EXPECTED --->'
+  \echo :expected
+\endif
+

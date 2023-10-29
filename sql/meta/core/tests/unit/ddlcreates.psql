@@ -5,7 +5,7 @@ CALL def_scalartypes(
   ScalarType('test', 'TextType', 'TEXT')
 );
 WITH test AS (
-SELECT ddlcreatescalartypes() AS result,
+SELECT ddlscalartypecreates() AS result,
 'CREATE DOMAIN test.IntType AS INT;
 
 CREATE DOMAIN test.TextType AS TEXT;' AS expected)
@@ -23,7 +23,7 @@ ROLLBACK;
 BEGIN;
 CALL def_scalartypes(
   ScalarType('test', 'Text', 'TEXT'),
-  ScalarType('test', 'Number', 'INT')
+  ScalarType('test', 'Number', 'INT', initial => $INI$123$INI$)
 );
 CALL def_compositetypes(
   CompositeType(
@@ -35,7 +35,7 @@ CALL def_compositetypes(
   CompositeType(
     'test', 'Compo21',
     fields(
-      Scalar(105, 'txt1', 'Text'),
+      Scalar(105, 'txt1', 'Text', initial => $INI$'abc'$INI$),
       Composite(110, 'compo1', 'Compo1'))
   ),
   CompositeType(
@@ -46,6 +46,7 @@ CALL def_compositetypes(
       Inline(115, 'Compo1', prefix => 'compo1_'))
   )
 );
+CALL fillddlfields();
 WITH test AS (
 SELECT ddlcreatecompositetypes() AS result,
 'CREATE TYPE test.Compo1_T AS (
@@ -75,4 +76,9 @@ SELECT result, expected, not equals(result, expected) error FROM test
   \echo '--- EXPECTED --->'
   \echo :expected
 \endif
+
+
+
+
+
 ROLLBACK;
