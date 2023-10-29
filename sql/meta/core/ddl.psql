@@ -114,21 +114,6 @@ $BODY$ LANGUAGE PLPGSQL;
 --call fillddlfields();
 --select * from ddlfields order by 2,3;
 
-CREATE FUNCTION astext(ns Namespace) RETURNS TEXT AS $BODY$
-  SELECT CASE CARDINALITY(ns)
-    WHEN 0 THEN ''
-    WHEN 1 THEN ns[1] || '.'
-    ELSE ns[1] || '.' || ARRAY_TO_STRING(ns[2:], '_') || '_'
-  END;
-$BODY$ LANGUAGE SQL IMMUTABLE;
---select (('aa-bb-cc').arr).astext;
-
-CREATE FUNCTION schema(ns Namespace) RETURNS TEXT AS $BODY$
-  SELECT CASE CARDINALITY(ns)
-    WHEN 0 THEN ''
-    ELSE ns[1] || '.'
-  END;
-$BODY$ LANGUAGE SQL IMMUTABLE;
 
 -- =================================================================
 
@@ -172,25 +157,27 @@ BEGIN
 END
 $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 
+-- TODO tables
 
-
-CREATE FUNCTION ddlscalartypecreates() RETURNS TEXT AS $BODY$
+CREATE FUNCTION ddlcreates() RETURNS TEXT AS $BODY$
 #variable_conflict use_variable
+DECLARE
+  scalars TEXT;
+  composites TEXT;
 BEGIN
-  RETURN STRING_AGG((s).ddlcreate, E'\n\n' ORDER BY s.serial)
+  SELECT STRING_AGG(
+    (s).ddlcreate, E'\n\n' ORDER BY s.serial) INTO scalars
   FROM scalartypes s;
-END
-$BODY$ LANGUAGE PLPGSQL;
-
-CREATE FUNCTION ddlcreatecompositetypes() RETURNS TEXT AS $BODY$
-#variable_conflict use_variable
-BEGIN
-  RETURN STRING_AGG((c).ddlcreate, E'\n\n' ORDER BY c.serial)
+  
+  SELECT STRING_AGG(
+    (c).ddlcreate, E'\n\n' ORDER BY c.serial) INTO composites
   FROM ONLY compositetypes c;
-END
-$BODY$ LANGUAGE PLPGSQL;
 
 -- TODO tables
+  RETURN CONCAT_WS(E'\n\n', scalars, composites);
+END
+$BODY$ LANGUAGE PLPGSQL;
+
 
 -- ==================================================================
 
@@ -218,14 +205,24 @@ BEGIN
 END
 $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 
-CREATE FUNCTION ddlscalartypesprops() RETURNS TEXT AS $BODY$
+CREATE FUNCTION ddldefault(scalar scalartypes) RETURNS TEXT AS $BODY$
 #variable_conflict use_variable
 BEGIN
-  RETURN STRING_AGG((s).ddlprops, E'\n\n' ORDER BY s.serial)
-  FROM scalartypes s;
+  RETURN CASE WHEN (scalar).initial.notnull THEN
+    FORMAT(
+      $DDL$ALTER DOMAIN %s%s SET DEFAULT %s;$DDL$,
+      (scalar.ns).schema, scalar.name, scalar.initial)
+    ELSE NULL
+  END;
 END
 $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 
+CREATE FUNCTION ddlalter(scalar scalartypes) RETURNS TEXT AS $BODY$
+#variable_conflict use_variable
+BEGIN
+  RETURN CONCAT_WS(E'\n', (scalar).ddlprops, (scalar).ddldefault);
+END
+$BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 
 
 CREATE FUNCTION ddlconstructor(cmp compositetypes) RETURNS TEXT AS $BODY$
@@ -259,33 +256,59 @@ $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 
 --ddlprops
 
-CREATE FUNCTION ddlcompositetypesprops() RETURNS TEXT AS $BODY$
+-- CREATE FUNCTION ddlcompositetypesprops() RETURNS TEXT AS $BODY$
+-- #variable_conflict use_variable
+-- BEGIN
+--   RETURN STRING_AGG((c).ddlconstructor, E'\n\n' ORDER BY c.serial)
+--   FROM ONLY compositetypes c;
+-- END
+-- $BODY$ LANGUAGE PLPGSQL;
+
+
+
+
+CREATE FUNCTION ddlalters() RETURNS TEXT AS $BODY$
 #variable_conflict use_variable
+DECLARE
+  scalars TEXT;
+  composites TEXT;
 BEGIN
-  RETURN STRING_AGG((c).ddlconstructor, E'\n\n' ORDER BY c.serial)
-  FROM ONLY compositetypes c;
+  SELECT STRING_AGG(
+    (s).ddlalter, E'\n\n' ORDER BY s.serial) INTO scalars
+  FROM scalartypes s;
+-- TODO tables
+  RETURN CONCAT_WS(E'\n\n', scalars, composites);
 END
-$BODY$ LANGUAGE PLPGSQL IMMUTABLE;
+$BODY$ LANGUAGE PLPGSQL;
+
 -- ==================================================================
 
-CREATE FUNCTION ddldefault(scalar scalartypes) RETURNS TEXT AS $BODY$
+
+-- =================================================================
+
+CREATE TYPE DDLRet AS (
+  creates TEXT,
+  alters TEXT
+);
+CREATE FUNCTION DDLRet(
+  creates TEXT,
+  alters TEXT
+) RETURNS DDLRet AS $BODY$
+  SELECT ROW(creates, alters);
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION ddl() RETURNS DDLRet AS $BODY$
 #variable_conflict use_variable
+DECLARE
+  creates TEXT;
+  alters TEXT;
 BEGIN
-  RETURN FORMAT(
-    $DDL$ALTER DOMAIN %s%s SET DEFAULT %s;$DDL$,
-    (scalar.ns).schema, scalar.name, scalar.initial);
+  CALL fillddlfields();
+  creates = ddlcreates();
+  alters = ddlalters();
+  RETURN DDLRet(creates, alters);
 END
-$BODY$ LANGUAGE PLPGSQL IMMUTABLE;
-
-CREATE FUNCTION ddlscalartypesdefaults() RETURNS TEXT AS $BODY$
-#variable_conflict use_variable
-BEGIN
-  RETURN STRING_AGG((s).ddldefault, E'\n\n' ORDER BY s.serial)
-  FROM scalartypes s WHERE s.initial IS NOT NULL;
-END
-$BODY$ LANGUAGE PLPGSQL IMMUTABLE;
-
-
+$BODY$ LANGUAGE PLPGSQL;
 
 
 

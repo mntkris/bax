@@ -70,3 +70,18 @@ $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 --select depar('@@1111@@ sdcm,hsdfjksdf @@3333@@', ExprParam('@@1111@@', 'AAAA'), ExprParam('@@3333@@', 'BBBBB'));
 
 
+CREATE FUNCTION astext(ns Namespace) RETURNS TEXT AS $BODY$
+  SELECT CASE CARDINALITY(ns)
+    WHEN 0 THEN ''
+    WHEN 1 THEN ns[1] || '.'
+    ELSE ns[1] || '.' || ARRAY_TO_STRING(ns[2:], '_') || '_'
+  END;
+$BODY$ LANGUAGE SQL IMMUTABLE;
+--select (('aa-bb-cc').arr).astext;
+
+CREATE FUNCTION schema(ns Namespace) RETURNS TEXT AS $BODY$
+  SELECT CASE CARDINALITY(ns)
+    WHEN 0 THEN ''
+    ELSE ns[1] || '.'
+  END;
+$BODY$ LANGUAGE SQL IMMUTABLE;
