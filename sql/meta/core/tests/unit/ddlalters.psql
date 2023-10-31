@@ -18,65 +18,82 @@ SELECT result, expected, not equals(result, expected) error FROM test
   \echo '--- EXPECTED --->'
   \echo :expected
 \endif
-
--- select * from scalartypes;
-
 ROLLBACK;
 
--- \echo *** SIMPLE COMPOSITE ALTERS 
--- BEGIN;
--- CALL def_scalartypes(
---   ScalarType('test', 'Text', 'TEXT', initial => $INI$'abc'$INI$),
---   ScalarType('test', 'Number', 'INT')
--- );
--- CALL def_compositetypes(
---   CompositeType(
---     'test', 'Compo1',
---     fields(
---       Scalar(105, 'txt1', 'Text'),
---       Scalar(110, 'num1', 'Number'))
---   ),
---   CompositeType(
---     'test', 'Compo21',
---     fields(
---       Scalar(105, 'txt1', 'Text'),
---       Composite(110, 'compo1', 'Compo1'))
---   ),
---   CompositeType(
---     'test', 'Compo22',
---     fields(
---       Scalar(105, 'num1', 'Number'),
---       Composite(110, 'compo1', 'Compo1'),
---       Inline(115, 'Compo1', prefix => 'compo1_'))
---   )
--- );
--- WITH test AS (
--- SELECT (ddl()).alters AS result,
--- 'CREATE TYPE test.Compo1_T AS (
---   txt1 Text,
---   num1 Number
--- );
--- CREATE DOMAIN test.Compo1 AS test.Compo1_T;
+\echo *** SIMPLE COMPOSITE ALTERS 
+BEGIN;
+CALL def_scalartypes(
+  ScalarType(
+    'test', 'Text', 'TEXT',
+    initial => $INI$'abc'$INI$
+  ),
+  ScalarType(
+    'test', 'Number', 'INT',
+    props => arr(
+      Prop('threeciphers', 'BOOL', $EXPR$self BETWEEN 100 AND 199$EXPR$)
+    )
+  )
+);
+CALL def_compositetypes(
+  CompositeType(
+    'test', 'Compo1',
+    fields => arr(
+      Scalar(
+        105, 'txt1', 'Text'
+      ),
+      Scalar(
+        110, 'num1', 'Number',
+        props => arr(
+          Prop('oneoneany', 'BOOL', $EXPR$self BETWEEN 110 AND 119 $EXPR$)
+        )
+      )
+    ),
+    props => arr(
+      Prop('repr', 'TEXT', $EXPR$FORMAT('Compo1(txt1: %s, num1: %s'), self.txt1, self.num1)$EXPR$)
+    )    
+  ),
+  CompositeType(
+    'test', 'Compo21',
+    fields => arr(
+      Scalar(
+        105, 'txt1', 'Text',
+        initial => $INI$'xyz'$INI$
+      ),
+      Composite(
+        110, 'compo1', 'Compo1',
+        initial => $INI$Compo1('fgh', '567')$INI$
+      )
+    )
+  ),
+  CompositeType(
+    'test', 'Compo22',
+    fields => arr(
+      Scalar(
+        105, 'num1', 'Number'
+      ),
+      Composite(
+        110, 'compo1', 'Compo1'
+      ),
+      Inline(
+        115, 'Compo1', 
+        prefix => 'compo1_'
+      )
+    )
+  )
+);
+WITH test AS (
+SELECT (ddl()).alters AS result,
+'FILL ME' AS expected)
+SELECT result, expected, not equals(result, expected) error FROM test
+\gset
+\if :error
+  \echo '--- RESULT --->'
+  \echo :result
+  \echo '--- EXPECTED --->'
+  \echo :expected
+\endif
 
--- CREATE TYPE test.Compo21_T AS (
---   txt1 Text,
---   compo1 Compo1
--- );
--- CREATE DOMAIN test.Compo21 AS test.Compo21_T;
+--select kind, parenttype, id, name, type, ispk, initial, f_initial, t_initial from ddlfieldsmv order by parenttype, id;
+--select kind, parenttype, id, name, type, ispk, initial from ddlfields order by parenttype, id;
 
--- CREATE TYPE test.Compo22_T AS (
---   num1 Number,
---   compo1 Compo1,
---   compo1_txt1 Text,
---   compo1_num1 Number
--- );
--- CREATE DOMAIN test.Compo22 AS test.Compo22_T;' AS expected)
--- SELECT result, expected, not equals(result, expected) error FROM test
--- \gset
--- \if :error
---   \echo '--- RESULT --->'
---   \echo :result
---   \echo '--- EXPECTED --->'
---   \echo :expected
--- \endif
--- ROLLBACK;
+ROLLBACK;

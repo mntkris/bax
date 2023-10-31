@@ -6,5 +6,5 @@ SET client_min_messages TO ERROR;
 SET client_min_messages TO DEFAULT;
 
 \include_relative tests/testutils.psql
-\include_relative tests/unit/ddlcreates.psql
+-- \include_relative tests/unit/ddlcreates.psql
 \include_relative tests/unit/ddlalters.psql

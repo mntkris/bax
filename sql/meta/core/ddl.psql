@@ -189,12 +189,15 @@ CREATE FUNCTION propsql(
   expr TEXT,
   self Ident DEFAULT 'self'
 ) RETURNS TEXT AS $BODY$
-  SELECT FORMAT(
-$FUN$CREATE FUNCTION %s%s(%s %s) RETURNS %s AS $PROP$
+#variable_conflict use_variable
+BEGIN
+  RETURN FORMAT(
+$FUN$CREATE FUNCTION %s%s(%s %s%s) RETURNS %s AS $PROP$
   SELECT %s;
-$PROP$ LANGUAGE SQL IMMUTABLE;$FUN$,
-  	sch, name, self, partype, rettype, expr);
-$BODY$ LANGUAGE SQL IMMUTABLE;
+$PROP$ LANGUAGE SQL IMMUTABLE; $FUN$,
+  	sch, name, self, sch, partype, rettype, expr);
+END
+$BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 
 CREATE FUNCTION ddlprops(scalar scalartypes) RETURNS TEXT AS $BODY$
 #variable_conflict use_variable
@@ -224,6 +227,7 @@ BEGIN
 END
 $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 
+-- ----
 
 CREATE FUNCTION ddlconstructor(cmp compositetypes) RETURNS TEXT AS $BODY$
 #variable_conflict use_variable
@@ -235,11 +239,11 @@ BEGIN
   SELECT 
     STRING_AGG(CONCAT(
       FORMAT($PARAM$  %s %s$PARAM$, name, type),
-      CASE WHEN (initial).notnull THEN FORMAT(' DEFAULT %s', initial) ELSE '' END),
-      E',\n' ORDER BY (initial).notempty, id),
+      CASE WHEN (f.initial).notnull THEN FORMAT(' DEFAULT %s', f.initial) ELSE '' END),
+      E',\n' ORDER BY (f.initial).notempty, f.id),
     STRING_AGG(name,
-      E',\n    ' ORDER BY (initial).notempty, id) INTO params, attrs
-  FROM ddlfieldsmv;
+      E',\n    ' ORDER BY (f.initial).notempty, f.id) INTO params, attrs
+  FROM ddlfieldsmv f WHERE cmp.name = f.parenttype;
   
   qname = (cmp.ns).astext || cmp.name;
   RETURN FORMAT(
@@ -254,18 +258,29 @@ $CONSTR$ LANGUAGE SQL IMMUTABLE;$FUN$,
 END
 $BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 
---ddlprops
-
--- CREATE FUNCTION ddlcompositetypesprops() RETURNS TEXT AS $BODY$
--- #variable_conflict use_variable
--- BEGIN
---   RETURN STRING_AGG((c).ddlconstructor, E'\n\n' ORDER BY c.serial)
---   FROM ONLY compositetypes c;
--- END
--- $BODY$ LANGUAGE PLPGSQL;
-
+CREATE FUNCTION ddlprops(cmp compositetypes) RETURNS TEXT AS $BODY$
+#variable_conflict use_variable
+BEGIN
+  RETURN STRING_AGG(
+    propsql((cmp.ns).schema, prop.name, cmp.name, prop.rettype, prop.expr), E'\n')
+  FROM UNNEST(cmp.props) prop;
+END
+$BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 
 
+CREATE FUNCTION ddlalter(cmp compositetypes) RETURNS TEXT AS $BODY$
+#variable_conflict use_variable
+DECLARE
+  constructor TEXT;
+  props TEXT;
+BEGIN
+  constructor = (cmp).ddlconstructor;
+
+  props = (cmp).ddlprops;
+
+  RETURN CONCAT_WS(E'\n\n', constructor, props);
+END
+$BODY$ LANGUAGE PLPGSQL IMMUTABLE;
 
 CREATE FUNCTION ddlalters() RETURNS TEXT AS $BODY$
 #variable_conflict use_variable
@@ -276,11 +291,23 @@ BEGIN
   SELECT STRING_AGG(
     (s).ddlalter, E'\n\n' ORDER BY s.serial) INTO scalars
   FROM scalartypes s;
+
+  SELECT STRING_AGG(
+    (c).ddlalter, E'\n\n' ORDER BY c.serial) INTO composites
+  FROM ONLY compositetypes c;
+
 -- TODO tables
   RETURN CONCAT_WS(E'\n\n', scalars, composites);
 END
 $BODY$ LANGUAGE PLPGSQL;
 
+CREATE FUNCTION arr(VARIADIC fieldsarr Field[]) RETURNS Field[] AS $BODY$
+  SELECT fieldsarr;
+$BODY$ LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION arr(VARIADIC propsarr Prop[]) RETURNS Prop[] AS $BODY$
+  SELECT propsarr;
+$BODY$ LANGUAGE SQL IMMUTABLE;
 -- ==================================================================
 
 

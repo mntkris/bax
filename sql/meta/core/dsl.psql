@@ -321,9 +321,6 @@ CREATE FUNCTION Ref1(
     ref1ext => Ref1Ext(destination => destination, cascade => cascade, names => names.arr));
 $BODY$ LANGUAGE SQL IMMUTABLE;
 
-CREATE FUNCTION fields(VARIADIC fieldsarr Field[]) RETURNS Field[] AS $BODY$
-  SELECT fieldsarr;
-$BODY$ LANGUAGE SQL IMMUTABLE;
 
 -- ===================================================
 
@@ -398,15 +395,17 @@ BEGIN
   FROM UNNEST(cts) ct;
 
   INSERT INTO scalarfields(
-    ownertype, id, name, notempty, indexed, isunique, props, validations, description, type)
-  SELECT ct.name, f.id, f.name, f.notempty, f.indexed, f.isunique, f.props, f.validations,
-    f.description, (f.scalarext).type
+    ownertype, id, name, initial, notempty, indexed, isunique,
+    props, validations, description, type)
+  SELECT ct.name, f.id, f.name, f.initial, f.notempty, f.indexed, f.isunique,
+    f.props, f.validations, f.description, (f.scalarext).type
   FROM UNNEST(cts) ct, UNNEST(ct.fields) f WHERE (f.scalarext).notnull;
 
   INSERT INTO compositefields(
-    ownertype, id, name, notempty, props, validations, description, type, inlineprefix)
-  SELECT ct.name, f.id, f.name, f.notempty, f.props, f.validations, f.description, 
-    (f.compositeext).type, (f.compositeext).inlineprefix 
+    ownertype, id, name, initial, notempty, props, validations, 
+    description, type, inlineprefix)
+  SELECT ct.name, f.id, f.name, f.initial, f.notempty, f.props, f.validations, 
+    f.description, (f.compositeext).type, (f.compositeext).inlineprefix 
   FROM UNNEST(cts) ct, UNNEST(ct.fields) f WHERE (f.compositeext).notnull;
 
   RETURN;
